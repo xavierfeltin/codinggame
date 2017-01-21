@@ -9,4 +9,4 @@ The code is developped in Python 3.
 
 This game is a course between pods (as the one in Star Wars). The pod is piloted with an optimization routine that the developper has to write. The routine is then called by the main game. The routine has to respect criteria set by the challenge (*see the challenge page for further information*).
  
-The code for the first league (bronze and silver) is lost since the same code has evolved through each league. (Try to do better for others challenges).
+The code for the first leagues (..., bronze and silver) is lost since the same code has evolved through each league. (I will try to do better for the others challenges).
