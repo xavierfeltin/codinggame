@@ -61,8 +61,6 @@ class Pod:
 def optimize_thrust(pod, other_pod, boss1, boss2, laps, checkpointCount, list_checkpoints, is_shield_available):
     SAFETY_DISTANCE = 830
     BOOST_DISTANCE = 4200
-    X_DELTA_POSITION = 600
-    Y_DELTA_POSITION = 600
     MIN_THRUST = 10
     MAX_THRUST = 100
     BOOST = 'BOOST'
@@ -78,21 +76,23 @@ def optimize_thrust(pod, other_pod, boss1, boss2, laps, checkpointCount, list_ch
     SECOND_SLOWING_COEFF = 0.2
     SHIELD_ACTIVATION_COEFF_DIST = 7
 
-    distance_player_ennemy = sqrt((pod.x - boss1.x) ** 2 + (pod.y - boss1.y) ** 2)
+    distance_player_boss1 = sqrt((pod.x - boss1.x) ** 2 + (pod.y - boss1.y) ** 2)
+    distance_player_boss2 = sqrt((pod.x - boss2.x) ** 2 + (pod.y - boss2.y) ** 2)
 
-    new_destination_x = pod.next_checkpoint_x
-    new_destination_y = pod.next_checkpoint_y
+    new_destination_x, new_destination_y = manage_trajectory (pod, boss1, boss2, distance_player_boss1, distance_player_boss2)
+    #new_destination_x = pod.next_checkpoint_x
+    #new_destination_y = pod.next_checkpoint_y
 
-    # if distance_player_ennemy < SAFETY_DISTANCE :
-    if boss1.x < pod.x and pod.x < pod.next_checkpoint_x:
-        new_destination_x = new_destination_x - X_DELTA_POSITION
-    elif boss1.x > pod.x and pod.x > pod.next_checkpoint_x:
-        new_destination_x = new_destination_x + X_DELTA_POSITION
+    ## if distance_player_boss1 < SAFETY_DISTANCE :
+    #if boss1.x < pod.x and pod.x < pod.next_checkpoint_x:
+    #    new_destination_x = new_destination_x - X_DELTA_POSITION
+    #elif boss1.x > pod.x and pod.x > pod.next_checkpoint_x:
+    #    new_destination_x = new_destination_x + X_DELTA_POSITION
 
-    if boss1.y < pod.y and pod.y < pod.next_checkpoint_y:
-        new_destination_y = new_destination_y - Y_DELTA_POSITION
-    elif boss1.y > pod.y and pod.y > pod.next_checkpoint_y:
-        new_destination_y = new_destination_y + Y_DELTA_POSITION
+    #if boss1.y < pod.y and pod.y < pod.next_checkpoint_y:
+    #    new_destination_y = new_destination_y - Y_DELTA_POSITION
+    #elif boss1.y > pod.y and pod.y > pod.next_checkpoint_y:
+    #    new_destination_y = new_destination_y + Y_DELTA_POSITION
 
     abs_angle = abs(pod.next_checkpoint_angle)
 
@@ -120,13 +120,39 @@ def optimize_thrust(pod, other_pod, boss1, boss2, laps, checkpointCount, list_ch
     if pod.next_checkpoint_dist > BOOST_DISTANCE and pod.next_checkpoint_angle < MIN_ANGLE:
         thrust = BOOST
 
-    # if pod.next_checkpoint_dist < SHIELD_ACTIVATION_COEFF_DIST * MIN_TO_CHECKPOINT and distance_player_ennemy <= SAFETY_DISTANCE and is_shield_available :
-    if (coefficient < 1 or pod.next_checkpoint_dist < SHIELD_ACTIVATION_COEFF_DIST * MIN_TO_CHECKPOINT) and distance_player_ennemy <= SAFETY_DISTANCE and is_shield_available:
+    # if pod.next_checkpoint_dist < SHIELD_ACTIVATION_COEFF_DIST * MIN_TO_CHECKPOINT and distance_player_boss1 <= SAFETY_DISTANCE and is_shield_available :
+    if (coefficient < 1 or pod.next_checkpoint_dist < SHIELD_ACTIVATION_COEFF_DIST * MIN_TO_CHECKPOINT) and distance_player_boss1 <= SAFETY_DISTANCE and is_shield_available:
         thrust = SHIELD
         pod.time_before_availability_shield = TURN_SHIELD_OFF
 
     return [new_destination_x, new_destination_y, thrust]
 
+def manage_trajectory (pod, boss1, boss2, distance_player_boss1, distance_player_boss2) :
+    #Manage the new destination point function of the bosses positions
+    #Take into account the boss that is closer to the pod => avoid contrary measures if two bosses are matching opposing criteria
+
+    X_DELTA_POSITION = 600
+    Y_DELTA_POSITION = 600
+
+    new_destination_x = pod.next_checkpoint_x
+    new_destination_y = pod.next_checkpoint_y
+
+    boss_to_check = boss1
+    if distance_player_boss2 < distance_player_boss1:
+        boss_to_check = boss2
+
+    # if distance_player_boss1 < SAFETY_DISTANCE :
+    if boss_to_check.x < pod.x and pod.x < pod.next_checkpoint_x:
+        new_destination_x = new_destination_x - X_DELTA_POSITION
+    elif boss_to_check.x > pod.x and pod.x > pod.next_checkpoint_x:
+        new_destination_x = new_destination_x + X_DELTA_POSITION
+
+    if boss_to_check.y < pod.y and pod.y < pod.next_checkpoint_y:
+        new_destination_y = new_destination_y - Y_DELTA_POSITION
+    elif boss_to_check.y > pod.y and pod.y > pod.next_checkpoint_y:
+        new_destination_y = new_destination_y + Y_DELTA_POSITION
+
+    return [new_destination_x, new_destination_y]
 
 # game loop
 
