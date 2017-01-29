@@ -23,9 +23,10 @@ FRICTION = 0.85  # (game constraint) friction factor applied on pods
 PRECISION = 6  # floating precision
 TIMEOUT = 100  # number of turns for a pod to reach its next checkpoint
 TIME_FULL_TURN = 1.0  # a full turn has a time of 1
-RADIUS_POD = 400
+RADIUS_POD = 100
 RADIUS_CHECKPOINT = 600
 BIG_SCORE_TO_OPTIMIZE = 100000
+TIME_BEFORE_DETECTION_CHECKPOINT = 0.011
 
 
 class Point():
@@ -471,10 +472,10 @@ class Pod(Unit):
         collision = self.get_collision(self.get_next_checkpoint())
 
         if collision is not None and isinstance(collision.b, Checkpoint):
-            print(str(self.id ) + ' - ckpt : ' + str(collision.b.id) + ', time : ' + str(collision.time) + ' - condition 1 ' + str((previous_collision is None and collision is not None and isinstance(collision.b, Checkpoint) and int(collision.b.id) == int(self.next_checkpoint_id) and collision.time <= 0.01)) + ', condition 2 ' + str((previous_collision is not None and collision is not None and isinstance(collision.b, Checkpoint) and int(collision.b.id) == int(self.next_checkpoint_id) and (collision.a.id != previous_collision.a.id or collision.b.id != previous_collision.b.id or collision.time != 0.0))), file=sys.stderr)
+            print(str(self.id ) + ' - ckpt : ' + str(collision.b.id) + ', time : ' + str(collision.time) + ' - condition 1 ' + str((previous_collision is None and collision is not None and isinstance(collision.b, Checkpoint) and int(collision.b.id) == int(self.next_checkpoint_id) and collision.time <= TIME_BEFORE_DETECTION_CHECKPOINT)) + ', condition 2 ' + str((previous_collision is not None and collision is not None and isinstance(collision.b, Checkpoint) and int(collision.b.id) == int(self.next_checkpoint_id) and (collision.a.id != previous_collision.a.id or collision.b.id != previous_collision.b.id or collision.time != 0.0))), file=sys.stderr)
 
-        if (previous_collision is None and collision is not None and isinstance(collision.b, Checkpoint) and int(collision.b.id) == int(self.next_checkpoint_id) and collision.time <= 0.01) \
-            or (previous_collision is not None and collision is not None and isinstance(collision.b, Checkpoint) and int(collision.b.id) == int(self.next_checkpoint_id) \
+        if (previous_collision is None and collision is not None and isinstance(collision.b, Checkpoint) and int(collision.b.id) == int(self.next_checkpoint_id) and collision.time <= TIME_BEFORE_DETECTION_CHECKPOINT) \
+            or (previous_collision is not None and collision is not None and isinstance(collision.b, Checkpoint) and int(collision.b.id) == int(self.next_checkpoint_id) and collision.time <= TIME_BEFORE_DETECTION_CHECKPOINT \
                         and (collision.a.id != previous_collision.a.id or collision.b.id != previous_collision.b.id or collision.time != 0.0)):
             #self.next_checkpoint_id = self.get_checkpoint_id_coming_after()
 
