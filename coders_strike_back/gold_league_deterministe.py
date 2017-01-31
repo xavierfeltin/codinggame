@@ -33,6 +33,10 @@ TIME_BEFORE_DETECTION_CHECKPOINT = 0.02
 COEFFICIENT_DISTANCE_COLLISION = 15  # nb times checkpoint raidus to validate a checkpoint collision (use to fix high speed and too early detection)
 NB_TURN_ROLLBACK = 2
 
+TIME_BEFORE_DETECTION_POD = 0.001
+SAFETY_DISTANCE = RADIUS_POD + RADIUS_POD + 50
+SHIELD = 'SHIELD'
+
 MAX_THRUST = 100
 MIN_THRUST = 20
 BOOST = 'BOOST'
@@ -41,10 +45,11 @@ MIN_ANGLE_SPEED = 20
 MIN_DISTANCE_BOOST = 3000
 FIRST_SLOWING_COEFFICIENT = 0.7
 SECOND_SLOWING_COEFFICIENT = 0.2
-NB_TURN_DECREASE = 5
+NB_TURN_DECREASE = 3
 DEFAULT_SPEED = 100
 
 BIG_SCORE_TO_OPTIMIZE = 100000
+
 
 class Point():
     def __init__(self, x, y):
@@ -489,7 +494,6 @@ class Pod(Unit):
         # collision = self.get_collision(self.get_next_checkpoint())
         checkpoint_entry = self.get_next_checkpoint_entry_point()
         collision = self.get_collision(Checkpoint(self.next_checkpoint_id, checkpoint_entry.x, checkpoint_entry.y, RADIUS_WAYPOINT))
-
         if collision is not None and isinstance(collision.b, Checkpoint):
 
             angle_with_future_checkpoint = self.get_delta_angle_orientation(self.path.get_node(self.get_checkpoint_id_coming_after()))
@@ -507,7 +511,7 @@ class Pod(Unit):
             condition_2 = condition_2 and (collision.a.id != previous_collision.a.id or collision.b.id != previous_collision.b.id or collision.time != 0.0)
 
             print(str(self.id) + ' - ckpt : ' + str(collision.b.id) + ', time : ' + str(collision.time) + ' - condition 1 ' + str(condition_1) + ', condition 2 ' + str(condition_2), file=sys.stderr)
-            print(str(self.id) + ' - distance : ' +  str(distance_to_checkpoint) + ' turning angle = ' + str(angle_with_future_checkpoint) + ' coeff : ' + str(turn_coefficient), file=sys.stderr)
+            print(str(self.id) + ' - distance : ' + str(distance_to_checkpoint) + ' turning angle = ' + str(angle_with_future_checkpoint) + ' coeff : ' + str(turn_coefficient), file=sys.stderr)
 
         else:
             condition_1 = False
@@ -549,6 +553,25 @@ class Pod(Unit):
 
             print(self.id + ' distance2 = ' + str(self.get_distance2(checkpoint_entry)) + ', speed : ' + str(speed_distance) + ', turn to reach : ' + str(turn_to_reach_checkpoint), file=sys.stderr)
             print(self.id + ' thrust = ' + str(thrust) + ', coeff : ' + str(coefficient), file=sys.stderr)
+
+        collision_boss1 = self.get_collision(boss1)
+        collision_boss2 = self.get_collision(boss2)
+        distance_pod_boss1 = self.get_distance(boss1)
+        distance_pod_boss2 = self.get_distance(boss2)
+
+        if collision_boss1 is not None and isinstance(collision_boss1.b, Pod) and collision_boss1.time <= TIME_BEFORE_DETECTION_POD:
+            if distance_pod_boss <= SAFETY_DISTANCE:
+                print('Activate SHIELD Boss 1 !!!', file=sys.stderr)
+                thrust = SHIELD
+
+        if collision_boss2 is not None and isinstance(collision_boss2.b, Pod) and collision_boss2.time <= TIME_BEFORE_DETECTION_POD:
+            if distance_pod_boss <= SAFETY_DISTANCE:
+                print('Activate SHIELD Boss 2 !!!', file=sys.stderr)
+                thrust = SHIELD
+
+        if distance_pod_boss1 <= SAFETY_DISTANCE or distance_pod_boss2 <= SAFETY_DISTANCE:
+            print('Safety SHIELD !!!', file=sys.stderr)
+            thrust = SHIELD
 
         # Look for a point corresponding to the targeted direction
         checkpoint_angle = self.get_delta_angle_orientation(checkpoint_entry)
