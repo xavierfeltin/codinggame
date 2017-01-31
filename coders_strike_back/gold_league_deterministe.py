@@ -36,6 +36,8 @@ NB_TURN_ROLLBACK = 2
 TIME_BEFORE_DETECTION_POD = 0.001
 SAFETY_DISTANCE = RADIUS_POD + RADIUS_POD + 50
 SHIELD = 'SHIELD'
+SHIELD_COOLDOWN = 3
+SHIELD_ACTIVATION_SPEED = 50
 
 MAX_THRUST = 100
 MIN_THRUST = 20
@@ -209,6 +211,7 @@ class Pod(Unit):
         self.path = None
         self.check_next_checkpoint_id = 0
         self.switch_checkpoint = 0
+        self.turn_activated_shield = 5
 
     def set_path(self, path):
         self.path = path.clone()
@@ -559,19 +562,26 @@ class Pod(Unit):
         distance_pod_boss1 = self.get_distance(boss1)
         distance_pod_boss2 = self.get_distance(boss2)
 
+        self.is_shield_activated = False
         if collision_boss1 is not None and isinstance(collision_boss1.b, Pod) and collision_boss1.time <= TIME_BEFORE_DETECTION_POD:
-            if distance_pod_boss <= SAFETY_DISTANCE:
+            if distance_pod_boss <= SAFETY_DISTANCE and self.shield_ready():
                 print('Activate SHIELD Boss 1 !!!', file=sys.stderr)
                 thrust = SHIELD
+                self.turn_activated_shield = turn
+                self.is_shield_activated = True
 
         if collision_boss2 is not None and isinstance(collision_boss2.b, Pod) and collision_boss2.time <= TIME_BEFORE_DETECTION_POD:
-            if distance_pod_boss <= SAFETY_DISTANCE:
+            if distance_pod_boss <= SAFETY_DISTANCE and self.shield_ready():
                 print('Activate SHIELD Boss 2 !!!', file=sys.stderr)
                 thrust = SHIELD
+                self.turn_activated_shield = turn
+                self.is_shield_activated = True
 
-        if distance_pod_boss1 <= SAFETY_DISTANCE or distance_pod_boss2 <= SAFETY_DISTANCE:
+        if (distance_pod_boss1 <= SAFETY_DISTANCE or distance_pod_boss2 <= SAFETY_DISTANCE) and self.shield_ready() and thrust <= SHIELD_ACTIVATION_SPEED:
             print('Safety SHIELD !!!', file=sys.stderr)
             thrust = SHIELD
+            self.turn_activated_shield = turn
+            self.is_shield_activated = True
 
         # Look for a point corresponding to the targeted direction
         checkpoint_angle = self.get_delta_angle_orientation(checkpoint_entry)
@@ -598,6 +608,9 @@ class Pod(Unit):
             self.next_checkpoint_id = self.check_next_checkpoint_id
             if self.next_checkpoint_id == 0:
                 self.lap -= 1
+
+    def shield_ready(self):
+        return (turn - self.turn_activated_shield >= SHIELD_COOLDOWN)
 
     def clone(self):
         '''
