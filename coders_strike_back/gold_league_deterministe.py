@@ -28,18 +28,18 @@ NB_TURN_SIMULATION = 40
 
 RADIUS_POD = 400
 RADIUS_CHECKPOINT = 600
-RADIUS_WAYPOINT = 20
-POSITION_WAYPOINT_CHECKPOINT = 150
-MIN_ANGLE_TAKE_ACCOUNT_COLLISION = 10
+RADIUS_WAYPOINT = 20 #Waypoint used as entry point in checkpoint  => TODO: check if keep it or not
 TIME_BEFORE_DETECTION_CHECKPOINT = 6  # turns before collision
-COEFFICIENT_DISTANCE_COLLISION = 13  # nb times checkpoint raidus to validate a checkpoint collision (use to fix high speed and too early detection)
-NB_TURN_ROLLBACK = 7
+NB_TURN_ROLLBACK = 7 #number of turns after an anticipated collisions to check if the checkpoint has been indeed validated (must be >= TIME_BEFORE_DETECTION_CHECKPOINT)
 
-TIME_BEFORE_DETECTION_POD = 0.001
-SAFETY_DISTANCE = RADIUS_POD + RADIUS_POD + 10
+ALIGNMENT_COEFFICIENT = 0.1 #How much we set before the next checkpoint for the alignment phase
+POD_ADVANCEMENT_STAGE_1 = 0.2 #distance ratio between past and next checkpoint using stage 1 strategy
+POD_ADVANCEMENT_STAGE_2 = 0.5 #distance ration between past and next checkpoint using stage 2 strategy
+DEGRESSIVE_COEFFICIENT_STAGE_2 = -0.1 #exponential degressive coefficient used in stage 2
+
+SAFETY_DISTANCE = RADIUS_POD + RADIUS_POD + 10 #distance of an ennemy to activate the shield
 SHIELD = 'SHIELD'
 SHIELD_COOLDOWN = 3
-SHIELD_ACTIVATION_SPEED = 50
 
 MAX_THRUST = 100
 MIN_THRUST = 20
@@ -49,11 +49,7 @@ MIN_ANGLE_SPEED = 20
 MIN_DISTANCE_BOOST = 5000
 FIRST_SLOWING_COEFFICIENT = 0.4
 SECOND_SLOWING_COEFFICIENT = 0.2
-NB_TURN_DECREASE = 3
-DEFAULT_SPEED = 100
-
-BIG_SCORE_TO_OPTIMIZE = 100000
-
+DEFAULT_SPEED = 100 #Arbitraty value to initiate the game to avoid a null speed
 
 class Point():
     def __init__(self, x, y):
@@ -83,9 +79,6 @@ class Point():
         c1 = da * a.x + db * a.y
         c2 = -db * self.x + da * self.y
         det = da ** 2 + db ** 2
-
-        closest_point_x = 0
-        closest_point_y = 0
 
         if det == 0:
             # Point is already on the line (ab)
@@ -432,62 +425,23 @@ class Pod(Unit):
 
     def get_next_checkpoint(self):
         return self.path.get_node(self.next_checkpoint_id)
-        # return list_checkpoints[self.next_checkpoint_id]
 
-        # def get_next_checkpoint_entry_point(self):
+    def get_next_checkpoint_entry_point(self):
         '''
-        Return the entry point of the next check point function of the direction of the checkpoint coming after
-        :return:
+         Return the entry point of the next check point function of the direction of the checkpoint coming after
+         It is based on the past check point, the next checkpoint and the future checkpoint and the projected position
+         of the pod onto the segment past_checkpoint / next_checkpoint to measure the advancement
+         3 steps :
+         1) Apply to the pod the vector next_checkpoint and future_next_checkpoint
+         2) Target an entrypoint inside the checkpoint opposite to the direction to go for the future checkpoint
+         3) Target a point front of the next_checkpoint on the line between the previous checkpoint and the next checkpoint
+        :return: Point object
         '''
-        '''
+
         next_checkpoint = list_checkpoints[self.next_checkpoint_id]
 
         id = self.get_checkpoint_id_coming_after()
         if id != -1:
-            future_checkpoint = list_checkpoints[id]
-
-            delta_angle = self.get_delta_angle_orientation(future_checkpoint)
-            #delta_angle = self.get_delta_angle_orientation(next_checkpoint)
-            #pod_checkpoint = Pod(next_checkpoint.id, next_checkpoint.radius)
-            #pod_checkpoint.angle =  0
-            #delta_angle = pod_checkpoint.get_delta_angle_orientation(future_checkpoint)
-
-
-            final_angle = delta_angle #+ self.angle
-
-            # Replace the angle between [0; 360] degrees
-            # mod operator is slower than if comparison
-            if final_angle >= 360.0:
-                final_angle -= 360.0
-            elif final_angle < 0.0:
-                final_angle += 360.0
-
-            radians_angle = 20*pi/180.0#final_angle * pi / 180.0
-
-            if ((next_checkpoint.x - self.x) >= 0  and final_angle >= 0) \
-                or ((next_checkpoint.x - self.x) < 0  and final_angle < 0):
-                x_coefficient = 0
-            elif ((next_checkpoint.x - self.x) >= 0  and final_angle < 0) \
-                or ((next_checkpoint.x - self.x) < 0  and final_angle >= 0):
-                x_coefficient = pi
-            else:
-                x_coefficient = 0
-
-            y_coefficient = (next_checkpoint.y - self.y)/max(abs(next_checkpoint.y - self.y),1)
-
-            return Point(next_checkpoint.x + (RADIUS_CHECKPOINT-RADIUS_WAYPOINT) * cos(radians_angle + x_coefficient), next_checkpoint.y + (RADIUS_CHECKPOINT-RADIUS_WAYPOINT) * sin(radians_angle * y_coefficient))
-
-        else:
-            return Point(next_checkpoint.x, next_checkpoint.y)
-
-        '''
-
-    def get_next_checkpoint_entry_point(self):
-
-        next_checkpoint = list_checkpoints[self.next_checkpoint_id]
-
-        id = self.get_checkpoint_id_coming_after()
-        if id != -1:  # or (next_checkpoint.id != 1 and self.lap == 1) :
             id_past = self.get_checkpoint_id_coming_before()
             past_checkpoint = list_checkpoints[id_past]
 
@@ -503,12 +457,12 @@ class Pod(Unit):
             elif pod_advancement > 1:
                 pod_advancement = 1
 
-            if pod_advancement < 0.2:
+            if pod_advancement < POD_ADVANCEMENT_STAGE_1:
                 coefficient = 0
                 coefficient_2 = 0
                 coefficient_3 = 1
-            elif pod_advancement < 0.5:
-                coefficient = exp(-0.1 * pod_advancement)
+            elif pod_advancement < POD_ADVANCEMENT_STAGE_2:
+                coefficient = exp(DEGRESSIVE_COEFFICIENT_STAGE_2 * pod_advancement)
                 coefficient_2 = 0
                 coefficient_3 = 0
             else:
@@ -517,7 +471,6 @@ class Pod(Unit):
                 coefficient = 0
 
             future_checkpoint = list_checkpoints[id]
-            # vector_checkpoints = Point(future_checkpoint.x - next_checkpoint.x, future_checkpoint.y - next_checkpoint.y)
             vector_checkpoints = Point(next_checkpoint.x - past_checkpoint.x, next_checkpoint.y - past_checkpoint.y)
 
             # delta_angle = self.get_delta_angle_orientation(future_checkpoint)
@@ -549,22 +502,15 @@ class Pod(Unit):
             y_coefficient = (next_checkpoint.y - self.y) / max(abs(next_checkpoint.y - self.y), 1)
 
             vector_pod_checkpoint = Point(next_checkpoint.x - (RADIUS_CHECKPOINT) * cos(radians_angle + x_coefficient), next_checkpoint.y - (RADIUS_CHECKPOINT) * sin(radians_angle * y_coefficient))
-            # vector_pod_checkpoint = Point(next_checkpoint.x - self.x, next_checkpoint.y - self.y)
 
-
-            alignment_vector_checkpoints = Point(next_checkpoint.x - (vector_checkpoints.x * 0.1), next_checkpoint.y - (vector_checkpoints.y * 0.1))
+            alignment_vector_checkpoints = Point(next_checkpoint.x - (vector_checkpoints.x * ALIGNMENT_COEFFICIENT), next_checkpoint.y - (vector_checkpoints.y * ALIGNMENT_COEFFICIENT))
 
             vector_final_x = ((self.x + vector_checkpoints.x) * (1 - coefficient) * coefficient_3) + (vector_pod_checkpoint.x * coefficient) + (alignment_vector_checkpoints.x * coefficient_2)
             vector_final_y = ((self.y + vector_checkpoints.y) * (1 - coefficient) * coefficient_3) + (vector_pod_checkpoint.y * coefficient) + (alignment_vector_checkpoints.y * coefficient_2)
             vector_final = Point(vector_final_x, vector_final_y)
 
-            speed_distance = self.x ** 2 + self.y ** 2
-            time = self.get_distance2(vector_checkpoints) / speed_distance
-            coefficient = min(0.15, pod_advancement)
-
             print_msg(self, self.id + ' entry point (' + str(self.x + vector_final.x) + ', ' + str(self.y + vector_final.y))
 
-            # return Point(next_checkpoint.x + vector_checkpoints.x * coefficient, next_checkpoint.y + vector_checkpoints.y * coefficient)
             return Point(vector_final.x, vector_final.y)
 
         else:
@@ -618,7 +564,6 @@ class Pod(Unit):
         else:
             print_msg(self, str(self.id) + ' - Recursive checkpoint ID : ' + str(self.next_checkpoint_id))
 
-        # self.rotate_move(move)
         thrust = move.thrust
 
         speed_distance = sqrt(self.vx ** 2 + self.vy ** 2)
@@ -626,11 +571,7 @@ class Pod(Unit):
             speed_distance = DEFAULT_SPEED
 
         collision = self.get_collision(self.get_next_checkpoint())
-        # checkpoint_entry = self.get_next_checkpoint()
         checkpoint_entry = self.get_next_checkpoint_entry_point()
-        # collision = self.get_collision(Checkpoint(self.next_checkpoint_id, checkpoint_entry.x, checkpoint_entry.y, RADIUS_WAYPOINT))
-
-
 
         if collision is not None and isinstance(collision.b, Checkpoint):
 
@@ -638,20 +579,15 @@ class Pod(Unit):
 
             angle_with_future_checkpoint = self.get_delta_angle_orientation(self.path.get_node(self.get_checkpoint_id_coming_after()))
 
-            if abs(angle_with_future_checkpoint) < MIN_ANGLE_TAKE_ACCOUNT_COLLISION:
-                turn_coefficient = COEFFICIENT_DISTANCE_COLLISION
-            else:
-                turn_coefficient = ((180.0 - abs(angle_with_future_checkpoint)) / 180.0) * COEFFICIENT_DISTANCE_COLLISION + COEFFICIENT_DISTANCE_COLLISION
-
             distance_to_checkpoint = self.get_distance(checkpoint_entry)
             condition_1 = (previous_collision is None and collision is not None and isinstance(collision.b, Checkpoint) and int(collision.b.id) == int(
-                self.next_checkpoint_id) and collision.time <= TIME_BEFORE_DETECTION_CHECKPOINT)  # and distance_to_checkpoint < turn_coefficient * RADIUS_WAYPOINT)
+                self.next_checkpoint_id) and collision.time <= TIME_BEFORE_DETECTION_CHECKPOINT)
             condition_2 = (previous_collision is not None and collision is not None and isinstance(collision.b, Checkpoint) and int(collision.b.id) == int(
-                self.next_checkpoint_id) and collision.time <= TIME_BEFORE_DETECTION_CHECKPOINT)  # and distance_to_checkpoint < turn_coefficient * RADIUS_WAYPOINT)
+                self.next_checkpoint_id) and collision.time <= TIME_BEFORE_DETECTION_CHECKPOINT)
             condition_2 = condition_2 and (collision.a.id != previous_collision.a.id or collision.b.id != previous_collision.b.id or collision.time != 0.0)
 
             print_msg(self, str(self.id) + ' - ckpt : ' + str(collision.b.id) + ', time : ' + str(collision.time) + ' - condition 1 ' + str(condition_1) + ', condition 2 ' + str(condition_2))
-            print_msg(self, str(self.id) + ' - distance : ' + str(distance_to_checkpoint) + ' turning angle = ' + str(angle_with_future_checkpoint) + ' coeff : ' + str(turn_coefficient))
+            print_msg(self, str(self.id) + ' - distance : ' + str(distance_to_checkpoint) + ' turning angle = ' + str(angle_with_future_checkpoint))
 
         else:
             condition_1 = False
@@ -686,7 +622,6 @@ class Pod(Unit):
             elif distance_to_checkpoint <= 1.0 * RADIUS_WAYPOINT:
                 coefficient = 0
             else:
-                # coefficient = 1 / (max(NB_TURN_DECREASE - turn_to_reach_checkpoint, 1))
                 coefficient = 1
 
             if thrust != BOOST:
@@ -700,8 +635,6 @@ class Pod(Unit):
             print_msg(self, self.id + ' distance2 = ' + str(self.get_distance2(checkpoint_entry)) + ', speed : ' + str(speed_distance) + ', turn to reach : ' + str(turn_to_reach_checkpoint))
             print_msg(self, self.id + ' thrust = ' + str(thrust) + ', coeff : ' + str(coefficient))
 
-        # collision_boss1 = self.get_collision(boss1)
-        # collision_boss2 = self.get_collision(boss2)
         distance_pod_boss1 = self.get_distance(boss1)
         distance_pod_boss2 = self.get_distance(boss2)
 
@@ -717,14 +650,11 @@ class Pod(Unit):
         new_angle = formalize_angle(self.angle + checkpoint_angle)
         radians_angle = new_angle * pi / 180.0
 
-        # px = self.x + cos(radians_angle) * 5000.0;
-        # py = self.y + sin(radians_angle) * 5000.0;
         px = self.x + cos(radians_angle) * distance_to_checkpoint;
         py = self.y + sin(radians_angle) * distance_to_checkpoint;
 
         if commit:
             print(round(px), round(py), thrust)
-            # print(self.get_next_checkpoint().x, self.get_next_checkpoint().y, thrust)
 
     def output_hunter(self, move, previous_collision):
         '''
@@ -771,12 +701,10 @@ class Pod(Unit):
             self.turn_activated_shield = turn
             self.is_shield_activated = True
 
-            # Look for a point corresponding to the targeted direction
+        # Look for a point corresponding to the targeted direction
         new_angle = formalize_angle(self.angle + angle_boss)
         radians_angle = new_angle * pi / 180.0
 
-        # px = self.x + cos(radians_angle) * 5000.0;
-        # py = self.y + sin(radians_angle) * 5000.0;
         px = self.x + cos(radians_angle) * distance_head_boss;
         py = self.y + sin(radians_angle) * distance_head_boss;
 
