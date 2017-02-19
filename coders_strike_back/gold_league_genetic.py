@@ -31,10 +31,10 @@ NB_TURN_SIMULATION = 6
 MAX_WAITING_TURN = 7
 
 RADIUS_POD = 400
-RADIUS_CHECKPOINT = 600
+RADIUS_CHECKPOINT = 1200
 RADIUS_WAYPOINT = 20  # Waypoint used as entry point in checkpoint  => TODO: check if keep it or not
 TIME_BEFORE_DETECTION_CHECKPOINT = 5  # turns before collision
-NB_TURN_ROLLBACK = 7  # number of turns after an anticipated collisions to check if the checkpoint has been indeed validated (must be >= TIME_BEFORE_DETECTION_CHECKPOINT)
+NB_TURN_ROLLBACK = 5  # number of turns after an anticipated collisions to check if the checkpoint has been indeed validated (must be >= TIME_BEFORE_DETECTION_CHECKPOINT)
 
 ALIGNMENT_COEFFICIENT = 0.1  # How much we set before the next checkpoint for the alignment phase
 POD_ADVANCEMENT_STAGE_1 = 0.2  # distance ratio between past and next checkpoint using stage 1 strategy
@@ -60,6 +60,7 @@ NB_MOVES = 6
 NB_POPULATION = 10  # must be a pair value
 NB_TOURNAMENT = 4  # 1/3 of the global population for now
 COEFFCIENT_AMPLITUDE = 0.5
+COEFFICIENT_MUTATION_FROM_REF = 0.5
 
 
 class Point():
@@ -127,7 +128,11 @@ class Unit(Point):
 
         # Use square distance to avoid using root function
         distance_to_other = self.get_distance2(other)
-        length_radii_squared = (self.radius + other.radius) ** 2  # +1000 to anticipate checkpoints
+
+        if isinstance(self, Pod) and isinstance(other, Checkpoint):
+            length_radii_squared = (other.radius) ** 2  # pod no radius to take into account the center of the pod
+        else:
+            length_radii_squared = (self.radius + other.radius) ** 2  # pod no radius to take into account the center of the pod
 
         if distance_to_other < length_radii_squared:
             # Units are already in contact so there is an immediate collision
@@ -236,13 +241,13 @@ class Pod(Unit):
         self.partner = partner
 
     def set_parameters(self, input, is_shield_activated):
-        self.x, self.y, self.vx, self.vy, self.angle, check_next_checkpoint_id = [int(i) for i in input().split()]
+        self.x, self.y, self.vx, self.vy, self.angle, self.check_next_checkpoint_id = [int(i) for i in input().split()]
         self.is_shield_activated = is_shield_activated
 
         # no more updated like in deterministic approach
-        if self.check_next_checkpoint_id != check_next_checkpoint_id:
-            self.check_next_checkpoint_id = check_next_checkpoint_id
-            self.bounce_with_checkpoint(self.get_next_checkpoint())
+        # if self.check_next_checkpoint_id != check_next_checkpoint_id:
+        #    self.check_next_checkpoint_id = check_next_checkpoint_id
+        #    self.bounce_with_checkpoint(self.get_next_checkpoint())
 
     def set_boss_parameters(self, input, is_shield_activated):
         self.x, self.y, self.vx, self.vy, self.angle, check_next_checkpoint_id = [int(i) for i in input().split()]
@@ -252,6 +257,18 @@ class Pod(Unit):
         if self.check_next_checkpoint_id != check_next_checkpoint_id:
             self.check_next_checkpoint_id = check_next_checkpoint_id
             self.bounce_with_checkpoint(self.get_next_checkpoint())
+
+    def check_consistency(self):
+        diff_turn = turn - self.switch_checkpoint
+
+        # print_msg(self, str(self.id) + 'diff turn ' + str(diff_turn))
+
+        if self.check_next_checkpoint_id != self.next_checkpoint_id and diff_turn == NB_TURN_ROLLBACK:
+            print_msg(None, 'rollback')
+            self.switch_checkpoint = turn
+            self.next_checkpoint_id = self.check_next_checkpoint_id
+            if self.next_checkpoint_id == 0:
+                self.lap -= 1
 
     def get_angle(self, p):
         '''
@@ -468,7 +485,7 @@ class Pod(Unit):
         :return: score
         '''
         # passing checkpoints is the top priority
-        return self.checked * 50000 - self.get_distance(self.get_next_checkpoint_entry_point())
+        return self.checked * 50000 - self.get_distance(self.get_next_checkpoint())
         # return (self.checked * 10000) - abs(self.get_delta_angle_orientation(self.get_next_checkpoint())) - self.get_angle(self.get_next_checkpoint()) - (self.get_distance(self.get_next_checkpoint()) * 2)
 
     def apply(self, move):
@@ -496,7 +513,7 @@ class Pod(Unit):
         :return: Point object
         '''
 
-        next_checkpoint = list_checkpoints[self.next_checkpoint_id]
+        next_checkpoint = self.get_next_checkpoint()  # list_checkpoints[self.next_checkpoint_id]
 
         id = self.get_checkpoint_id_coming_after()
         if id != -1:
@@ -582,10 +599,12 @@ class Pod(Unit):
 
             # print_msg(self, self.id + ' entry point (' + str(self.x + vector_final.x) + ', ' + str(self.y + vector_final.y))
 
-            return Point(vector_final.x, vector_final.y)
+            return Checkpoint(self.next_checkpoint_id, vector_final.x, vector_final.y, 50)
+            # return Point(vector_final.x, vector_final.y)
 
         else:
-            return Point(next_checkpoint.x, next_checkpoint.y)
+            return Checkpoint(self.next_checkpoint_id, next_checkpoint.x, next_checkpoint.y, 50)
+            # return Point(next_checkpoint.x, next_checkpoint.y)
 
     def get_checkpoint_id_coming_after(self):
         '''
@@ -720,8 +739,14 @@ class Pod(Unit):
 
         thrust = MAX_THRUST
 
-        # checkpoint_entry = self.get_next_checkpoint()
+        collision = self.get_collision(self.get_next_checkpoint())
+        if collision is not None and isinstance(collision.b, Checkpoint):
+            if collision.b.id == self.next_checkpoint_id and collision.time < 1.0:
+                self.bounce_with_checkpoint(collision.b)
+                print_msg(None, 'collision time = ' + str(collision.time))
+
         checkpoint_entry = self.get_next_checkpoint()
+
         angle_checkpoint = self.get_delta_angle_orientation(checkpoint_entry)
         distance_to_checkpoint = self.get_distance(checkpoint_entry)
 
@@ -918,6 +943,13 @@ class Solution:
         self.boss1 = None
         self.boss2 = None
         self.result = -inf
+        self.result1 = -inf
+        self.result2 = -inf
+
+        self.checked1 = 0
+        self.next_checkpoint_id1 = 0
+        self.checked2 = 0
+        self.next_checkpoint_id2 = 0
 
     def save(self):
         self.cho = cho.clone()
@@ -938,12 +970,6 @@ class Solution:
 
         for move in self.moves2:
             clone.moves2.append(Move(move.angle, move.thrust))
-
-        clone.cho = self.cho.clone()
-        clone.gall = self.gall.clone()
-        clone.boss1 = self.boss1.clone()
-        clone.boss2 = self.boss2.clone()
-        clone.result = self.result
 
         return clone
 
@@ -968,8 +994,11 @@ class Solution:
             # print_msg(self.cho, ' next entry point : (' + str(self.cho.get_next_checkpoint().x) + ', ' + str(self.cho.get_next_checkpoint().y) + ')')
             # print_msg(self.gall, ' next entry point : (' + str(self.gall.get_next_checkpoint().x) + ', ' + str(self.gall.get_next_checkpoint().y) + ')')
 
-            result = (self.cho.checked * 10000 - self.cho.get_distance(self.cho.get_next_checkpoint()))
-            result += (self.gall.checked * 10000 - self.gall.get_distance(self.gall.get_next_checkpoint()))
+            # TODO : add criteria on future checkpoint if the checked has been incremented during play
+            self.result1 = (self.cho.checked * 50000) - self.cho.get_distance(self.cho.get_next_checkpoint())
+            self.result2 = (self.gall.checked * 50000) - self.gall.get_distance(self.gall.get_next_checkpoint())
+            result = self.result1 + self.result2
+            # result += (self.gall.checked * 50000) -  self.distance_next_waypoint2 - self.distance_future_waypoint2
             # result -= (head_boss.checked * 10000 + head_boss.get_distance(head_boss.get_next_checkpoint()))
 
             return result
@@ -987,7 +1016,15 @@ class Solution:
             # self.boss2.apply_boss(None)  # Set angles and thrust from IA strategy guessing
 
             # play([self.cho, self.gall, self.boss1, self.boss2])
+
             play([self.cho, self.gall])
+
+            if i <= 3:
+                self.checked1 = self.cho.checked
+                self.next_checkpoint_id1 = self.cho.next_checkpoint_id
+
+                self.checked2 = self.gall.checked
+                self.next_checkpoint_id2 = self.gall.next_checkpoint_id
 
         # Compute the score
         self.result = self.evaluation()
@@ -1034,15 +1071,17 @@ def generate_population(is_first_generation):
         reference_solution.moves2 = generate_IA_moves(gall)
         solutions.append(reference_solution)
 
+        print_msg(None, 'first generation angle = ' + str(reference_solution.moves1[0].angle))
+
         for i in range(NB_POPULATION - 1):
             solution = Solution()
             for j in range(NB_MOVES):
                 move = Move(reference_solution.moves1[j].angle, reference_solution.moves1[j].thrust)
-                move.mutate(0.6)
+                move.mutate(COEFFICIENT_MUTATION_FROM_REF)
                 solution.moves1.append(move)
 
                 move = Move(reference_solution.moves2[j].angle, reference_solution.moves2[j].thrust)
-                move.mutate(0.6)
+                move.mutate(COEFFICIENT_MUTATION_FROM_REF)
                 solution.moves2.append(move)
 
             solutions.append(solution)
@@ -1057,12 +1096,12 @@ def generate_population(is_first_generation):
 
         for i in range(NB_POPULATION - 1):
             move = Move(reference_move_cho.angle, reference_move_cho.thrust)
-            move.mutate(0.6)
+            move.mutate(COEFFICIENT_MUTATION_FROM_REF)
             solutions[i + 1].moves1.popleft()
             solutions[i + 1].moves1.append(move)
 
             move = Move(reference_move_gall.angle, reference_move_gall.thrust)
-            move.mutate(0.6)
+            move.mutate(COEFFICIENT_MUTATION_FROM_REF)
             solutions[i + 1].moves2.popleft()
             solutions[i + 1].moves2.append(move)
 
@@ -1083,14 +1122,14 @@ def generate_IA_moves(pod):
 
 
 def generate_IA_next_move(pod, previous_moves):
-    # backup = pod.clone()
+    backup = pod.clone()
     # for move in previous_moves:
     #    pod.apply(move)
     #    play([pod])
 
     move = pod.generate_move_IA()
 
-    # pod.load(backup)
+    pod.load(backup)
     return move
 
 
@@ -1117,7 +1156,7 @@ def play(list_pods):
                     if found:
                         first_collision = None
                     else:
-                        first_collision = collision.clone()
+                        first_collision = collision
 
             # Collision with another checkpoint?
             # It is unnecessary to check all checkpoints here.We only test the pod's next checkpoint.
@@ -1135,7 +1174,7 @@ def play(list_pods):
                 if found:
                     first_collision = None
                 else:
-                    first_collision = collision.clone()
+                    first_collision = collision
 
         if first_collision is None:
             # No collision so the pod is following its path until the end of the turn
@@ -1152,7 +1191,7 @@ def play(list_pods):
             first_collision.a.bounce(first_collision.b)
 
             time += first_collision.time
-            previous_collision.append(first_collision.clone())
+            previous_collision.append(first_collision)
 
     for pod in list_pods:
         pod.finalize()
@@ -1166,7 +1205,9 @@ def tournament(solutions):
         challenger_1 = randint(0, NB_POPULATION / 2)
         challenger_2 = randint(0, NB_POPULATION / 2)
 
-        if solutions[challenger_1].result > solutions[challenger_2].result:
+        # if solutions[challenger_1].result > solutions[challenger_2].result:
+        if (solutions[challenger_1].result1 > solutions[challenger_2].result1) \
+                and (solutions[challenger_1].result2 > solutions[challenger_2].result2):
             winners.append(solutions[challenger_1])
         else:
             winners.append(solutions[challenger_2])
@@ -1255,57 +1296,72 @@ while True:
     new_time = 0.0
     delta_time = 0.0
 
-    minScore = -inf
+    print_msg(None, 'Turn : ' + str(turn))
 
     cho.set_parameters(input, False)
-    print_msg(cho, 'Set parameters check next ckpt ? ' + str(cho.check_next_checkpoint_id))
-    print_msg(cho, 'Set parameters next ckpt ? ' + str(cho.next_checkpoint_id))
-
     gall.set_parameters(input, False)
     boss1.set_boss_parameters(input, False)
     boss2.set_boss_parameters(input, False)
 
-    amplitude = 1.0
-
     if turn == 0:
-        generate_population(True)
+        print(cho.get_next_checkpoint().x, cho.get_next_checkpoint().y, 100)
+        print(gall.get_next_checkpoint().x, gall.get_next_checkpoint().y, 100)
+        turn += 1
     else:
-        generate_population(False)
+        cho.check_consistency()
+        gall.check_consistency()
 
-    for i in range(NB_POPULATION):
-        solution = solutions[i]
-        solution.score()
+        amplitude = 1.0
 
-    solutions = sorted(solutions, key=attrgetter('result'), reverse=True)
-
-    new_time = (time.time() - start_time) * 1000.0  # ms
-    delta_time = new_time - elapsed_time
-    elapsed_time = new_time
-
-    while (elapsed_time + delta_time) < 140:
-        selected_parents = tournament(solutions)
-        new_generation = crossing(selected_parents, amplitude)
+        if turn == 1:
+            generate_population(True)
+        else:
+            generate_population(False)
 
         for i in range(NB_POPULATION):
-            solution = new_generation[i]
-            solution.mutate(amplitude)
+            solution = solutions[i]
             solution.score()
-
-            if solution.result > solutions[len(solutions) - 1].result:
-                solutions.pop()
-                solutions.append(solution)
 
         solutions = sorted(solutions, key=attrgetter('result'), reverse=True)
 
-        amplitude = amplitude * COEFFCIENT_AMPLITUDE
         new_time = (time.time() - start_time) * 1000.0  # ms
         delta_time = new_time - elapsed_time
         elapsed_time = new_time
-        # print_msg(None, 'new_time : ' + str(elapsed_time) + ', delta time = ' + str(delta_time))
 
-    print_msg(None, 'best solution result ' + str(solutions[0].result))
-    cho.output(solutions[0].moves1[0])
-    gall.output(solutions[0].moves2[0])
-    # print(gall.x, gall.y, 0)
+        while (elapsed_time + delta_time) < 140:
+            selected_parents = tournament(solutions)
+            new_generation = crossing(selected_parents, amplitude)
 
-    turn += 1
+            for i in range(NB_POPULATION):
+                solution = new_generation[i]
+                solution.mutate(amplitude)
+                solution.score()
+
+                # if solution.result > solutions[len(solutions)-1].result:
+                if (solution.result1 > solutions[len(solutions) - 1].result1) \
+                        and (solution.result2 > solutions[len(solutions) - 1].result2):
+                    solutions.pop()
+                    solutions.append(solution)
+                    # print_msg(None, 'Append solution : ' + str(solution.moves1[0].thrust) + ', ' + str(solution.moves1[0].angle))
+
+                solutions = sorted(solutions, key=attrgetter('result'), reverse=True)
+
+            amplitude = amplitude * COEFFCIENT_AMPLITUDE
+            new_time = (time.time() - start_time) * 1000.0  # ms
+            delta_time = new_time - elapsed_time
+            elapsed_time = new_time
+            # print_msg(None, 'new_time : ' + str(elapsed_time) + ', delta time = ' + str(delta_time))
+
+        if solutions[0].next_checkpoint_id1 != cho.next_checkpoint_id:
+            cho.bounce_with_checkpoint(cho.get_next_checkpoint())
+
+        if solutions[0].next_checkpoint_id2 != gall.next_checkpoint_id:
+            gall.bounce_with_checkpoint(gall.get_next_checkpoint())
+
+        print_msg(cho, cho.id + ' next : ' + str(cho.next_checkpoint_id))
+
+        cho.output(solutions[0].moves1[0])
+        gall.output(solutions[0].moves2[0])
+        # print(gall.x, gall.y, 0)
+
+        turn += 1
