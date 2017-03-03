@@ -30,10 +30,15 @@ TIME_FULL_TURN = 1.0  # a full turn has a time of 1
 NB_TURN_SIMULATION = 6
 MAX_WAITING_TURN = 7
 
-RADIUS_POD = 400
-RADIUS_CHECKPOINT = 600
-RADIUS_WAYPOINT = 20  # Waypoint used as entry point in checkpoint  => TODO: check if keep it or not
-TIME_BEFORE_DETECTION_CHECKPOINT = 5  # turns before collision
+RADIUS_POD = 400.0
+RADIUS_CHECKPOINT = 600.0
+DOUBLE_RADIUS_CHECKPOINT = 1200.0
+SQUARED_RADIUS_CHECKPOINT = 360000.0
+SQUARED_DOUBLE_RADIUS_CHECKPOINT = 1440000.0
+MAX_DISTANCE_BY_TURN = 1300.0
+SQUARED_MAX_DISTANCE_BY_TURN = 1690000.0
+RADIUS_WAYPOINT = 20.0  # Waypoint used as entry point in checkpoint  => TODO: check if keep it or not
+TIME_BEFORE_DETECTION_CHECKPOINT = 5.0  # turns before collision
 NB_TURN_ROLLBACK = 5  # number of turns after an anticipated collisions to check if the checkpoint has been indeed validated (must be >= TIME_BEFORE_DETECTION_CHECKPOINT)
 
 ALIGNMENT_COEFFICIENT = 0.1  # How much we set before the next checkpoint for the alignment phase
@@ -42,7 +47,7 @@ POD_ADVANCEMENT_STAGE_2 = 0.5  # distance ration between past and next checkpoin
 DEGRESSIVE_COEFFICIENT_STAGE_2 = -0.11  # exponential degressive coefficient used in stage 2 (higher coeff means less brutal)
 
 SAFETY_DISTANCE = RADIUS_POD + RADIUS_POD + 10  # distance of an ennemy to activate the shield
-SAFETY_DISTANCE_SQUARED = (RADIUS_POD + RADIUS_POD + 10) ** 2
+SAFETY_DISTANCE_SQUARED = 656100
 SHIELD = 'SHIELD'
 SHIELD_COOLDOWN = 3
 
@@ -58,10 +63,10 @@ DEFAULT_SPEED = 100  # Arbitraty value to initiate the game to avoid a null spee
 
 # GENETIC ALGO
 NB_MOVES = 6
-NB_POPULATION = 10  # must be a pair value
+NB_POPULATION = 20  # must be a pair value
 NB_CHILDREN = 10
 NB_BEST_CHILDREN = 5  # less than nb children
-NB_TOURNAMENT = 5  # 1/3 of the global population for now
+NB_TOURNAMENT = 2  # 1/3 of the global population for now
 COEFFCIENT_AMPLITUDE = 0.8
 COEFFICIENT_MUTATION_FROM_REF = 0.5
 
@@ -75,7 +80,7 @@ class Point():
         '''
         Return the square of the euclidian distance between the current point and the b point
         '''
-        return (self.x - b.x) ** 2 + (self.y - b.y) ** 2
+        return (self.x - b.x) * (self.x - b.x) + (self.y - b.y) * (self.y - b.y)
 
     def get_distance(self, b):
         '''
@@ -100,7 +105,7 @@ class Point():
         db = ax - bx
         c1 = da * ax + db * ay
         c2 = -db * selfx + da * selfy
-        det = da ** 2 + db ** 2
+        det = da * da + db * db
 
         if det == 0:
             # Point is already on the line (ab)
@@ -139,10 +144,13 @@ class Unit(Point):
         # Use square distance to avoid using root function
         distance_to_other = self.get_distance2(other)
 
+        if distance_to_other > SQUARED_MAX_DISTANCE_BY_TURN:
+            return None
+
         if isinstance(self, Pod) and isinstance(other, Checkpoint):
-            length_radii_squared = (other.radius) ** 2  # pod no radius to take into account the center of the pod
+            length_radii_squared = (other.radius) * (other.radius)  # pod no radius to take into account the center of the pod
         else:
-            length_radii_squared = (self.radius + other.radius) ** 2  # pod no radius to take into account the center of the pod
+            length_radii_squared = (self.radius + other.radius) * (self.radius + other.radius)  # pod no radius to take into account the center of the pod
 
         if distance_to_other < length_radii_squared:
             # Units are already in contact so there is an immediate collision
@@ -173,7 +181,7 @@ class Unit(Point):
         # If the distance between other unit and this line is less than the sum of the radii, there might be a collision
         if distance_unit_closest_projection < length_radii_squared:
             # The pod speed on the line (norm)
-            speed_distance = vx ** 2 + vy ** 2
+            speed_distance = vx * vx + vy * vy
 
             # Project the pod on the line to find the point of impact
             distance_intersection_units = sqrt(length_radii_squared - distance_unit_closest_projection)
@@ -423,8 +431,11 @@ class Pod(Unit):
         '''
 
         if isinstance(other, Checkpoint):
+            # print('bounce ckpt', file = sys.stderr)
             self.bounce_with_checkpoint(other)
         else:
+            # print('bounce pod', file = sys.stderr)
+
             # If a pod has its shield active its mass is 10 otherwise it's 1
             if self.is_shield_activated:
                 mass_pod1 = 10
@@ -440,7 +451,7 @@ class Pod(Unit):
             distance_x = self.x - other.x
             distance_y = self.y - other.y
 
-            distance_square = distance_x * distance_x + distance_y + distance_y
+            distance_square = distance_x * distance_x + distance_y * distance_y
             if distance_square == 0:
                 distance_square = 1
 
@@ -657,14 +668,15 @@ class Pod(Unit):
 
     def apply_boss(self):
 
-        collision = self.get_collision(self.get_next_checkpoint())
-        if collision is not None and isinstance(collision.b, Checkpoint):
-            if collision.b.id == self.next_checkpoint_id and collision.time < 3.0:
-                self.bounce_with_checkpoint(collision.b)
+        # Managed by the play function
+        # collision = self.get_collision(self.get_next_checkpoint())
+        # if collision is not None and isinstance(collision.b, Checkpoint):
+        #    if collision.b.id == self.next_checkpoint_id and collision.time < 3.0:
+        #        self.bounce_with_checkpoint(collision.b)
 
         checkpoint_entry = self.get_next_checkpoint()
         angle_checkpoint = self.get_delta_angle_orientation(checkpoint_entry)
-        distance_to_checkpoint = self.get_distance(checkpoint_entry)
+        squared_distance_to_checkpoint = self.get_distance2(checkpoint_entry)
 
         # Compute thrust :
         if not self.shield_ready():
@@ -681,9 +693,9 @@ class Pod(Unit):
             else:
                 thrust = MAX_THRUST * (MAX_ANGLE_SPEED - abs(angle_checkpoint)) / MAX_ANGLE_SPEED
 
-            if distance_to_checkpoint < 2.0 * RADIUS_WAYPOINT:
+            if squared_distance_to_checkpoint > SQUARED_RADIUS_CHECKPOINT and squared_distance_to_checkpoint <= SQUARED_DOUBLE_RADIUS_CHECKPOINT:
                 coefficient = 0.8
-            elif distance_to_checkpoint <= 1.0 * RADIUS_WAYPOINT:
+            elif squared_distance_to_checkpoint <= SQUARED_RADIUS_CHECKPOINT:
                 coefficient = 0
             else:
                 coefficient = 1
@@ -949,10 +961,10 @@ class Solution:
         if cho.timeout == 0 or gall.timeout == 0:
             # timeout
             return -100000
-        elif boss1.next_checkpoint_id == -1 or boss2.next_checkpoint_id == -1:
-            # boss runner wins the race
-            # return -inf
-            return -100000
+            # elif boss1.next_checkpoint_id == -1 or boss2.next_checkpoint_id == -1:
+        #    # boss runner wins the race
+        #    #return -inf
+        #    return -100000
         # elif self.cho.next_checkpoint_id == -1 or self.gall.next_checkpoint_id == -1:
         #    # player wins the race !!!
         #    #return inf
@@ -978,17 +990,44 @@ class Solution:
         # self.save()
 
         # Play out the turns
-        for i in range(len(self.moves1)):
+        profiler_apply_cho = 0.0
+        profiler_apply_gall = 0.0
+        profiler_apply_boss1 = 0.0
+        profiler_apply_boss2 = 0.0
+        profiler_play = 0.0
+
+        for i in range(NB_MOVES):
             # Apply all the moves to the pods before playing
+            profiler = time.clock()
             cho.apply(self.moves1[i])
+            profiler_apply_cho += (time.clock() - profiler) * 1000
+
+            profiler = time.clock()
             gall.apply(self.moves2[i])
+            profiler_apply_gall += (time.clock() - profiler) * 1000
 
-            # boss1.apply_boss()  # Set angles and thrust from IA strategy guessing
-            # boss2.apply_boss()  # Set angles and thrust from IA strategy guessing
+            if i == 0:
+                boss1.load(cache_boss1)
+                boss2.load(cache_boss2)
+            else:
+                profiler = time.clock()
+                boss1.apply_boss()  # Set angles and thrust from IA strategy guessing
+                profiler_apply_boss1 += (time.clock() - profiler) * 1000
 
-            # start = time.clock()
-            play([cho, gall])
-            # print(str((time.clock() - start)*1000), file=sys.stderr)
+                profiler = time.clock()
+                boss2.apply_boss()  # Set angles and thrust from IA strategy guessing
+                profiler_apply_boss2 += (time.clock() - profiler) * 1000
+
+            profiler = time.clock()
+            play([cho, gall, boss1, boss2])
+            profiler_play += (time.clock() - profiler) * 1000
+
+        profiler_apply_cho = profiler_apply_cho / NB_MOVES
+        profiler_apply_gall = profiler_apply_gall / NB_MOVES
+        profiler_apply_boss1 = profiler_apply_boss1 / NB_MOVES
+        profiler_apply_boss2 = profiler_apply_boss2 / NB_MOVES
+        profiler_play = profiler_play / NB_MOVES
+        # print('profiler score: cho = ' + str(round(profiler_apply_cho, 4)) + ', gall = ' + str(round(profiler_apply_cho, 4)) + ', b1 = ' + str(round(profiler_apply_boss1, 4)) + ', b2 = ' + str(round(profiler_apply_boss2, 4)) + ', play = ' + str(round(profiler_play, 4)), file=sys.stderr)
 
         # Compute the score
         self.result = self.evaluation()
@@ -1117,6 +1156,7 @@ def play(list_pods):
 
     previous_collision = None
     # previous_append = previous_collision.append
+
     while (time < 1.0):
         first_collision = None
         new_collision = None
@@ -1127,14 +1167,15 @@ def play(list_pods):
                 collision = list_pods[i].get_collision(list_pods[j], True)  # TODO modify get_collision to return again collision in time < 1.0
 
                 if collision is not None:
-                    if previous_collision is not None and (collision.a == previous_collision.a and collision.b == previous_collision.b) \
-                            and collision.time == previous_collision.time:
+                    if previous_collision is not None \
+                            and ((collision.a == previous_collision.a and collision.b == previous_collision.b and collision.time == previous_collision.time) \
+                                         or (collision.b == previous_collision.a and collision.a == previous_collision.b and collision.time == previous_collision.time)):
                         new_collision = None
                     else:
                         new_collision = collision
 
                         # If the collision happens earlier than the current one we keep it
-                        if new_collision is not None and (new_collision.time + time) < 1.0 and (first_collision is None or new_collision.time < first_collision.time):
+                        if (new_collision.time + time) < 1.0 and (first_collision is None or new_collision.time < first_collision.time):
                             first_collision = new_collision
 
             # Collision with another checkpoint?
@@ -1150,7 +1191,7 @@ def play(list_pods):
                     new_collision = collision
 
                     # If the collision happens earlier than the current one we keep it
-                    if new_collision is not None and (new_collision.time + time) < 1.0 and (first_collision is None or new_collision.time < first_collision.time):
+                    if (new_collision.time + time) < 1.0 and (first_collision is None or new_collision.time < first_collision.time):
                         first_collision = new_collision
 
         if first_collision is None:
@@ -1161,14 +1202,19 @@ def play(list_pods):
 
             time = 1.0  # end of the turn
         else:
+
+            collision_time = first_collision.time
+            if collision_time == 0.0:
+                collision_time = 0.1
+
             # Move the pod normally until collision time
             for i in range(nb_pods):
-                list_pods[i].move(1.0 - first_collision.time)
+                list_pods[i].move(1.0 - collision_time)
 
             # Solve the collision
             first_collision.a.bounce(first_collision.b)
 
-            time += first_collision.time
+            time += collision_time
             previous_collision = first_collision
 
             if time >= 1.0:  # end of the turn
@@ -1184,9 +1230,9 @@ def tournament(solutions):
         challenger_1 = randint(0, NB_POPULATION - 1)
         challenger_2 = randint(0, NB_POPULATION - 1)
 
-        # if solutions[challenger_1].result > solutions[challenger_2].result:
-        if (solutions[challenger_1].result1 > solutions[challenger_2].result1) \
-                and (solutions[challenger_1].result2 > solutions[challenger_2].result2):
+        if solutions[challenger_1].result > solutions[challenger_2].result:
+            # if (solutions[challenger_1].result1 > solutions[challenger_2].result1) \
+            #        and (solutions[challenger_1].result2 > solutions[challenger_2].result2):
             winners.append(solutions[challenger_1].clone())
         else:
             winners.append(solutions[challenger_2].clone())
@@ -1203,11 +1249,16 @@ def crossing(solutions, amplitude):
 
         child = Solution()
         for j in range(NB_MOVES):
-            angle = round((parent_1.moves1[j].angle + parent_2.moves1[j].angle) / 2.0)
+            # angle = round((parent_1.moves1[j].angle + parent_2.moves1[j].angle) / 2.0)
+            angle = (parent_1.moves1[j].angle + parent_2.moves1[j].angle) / 2.0
 
             thrust_p1 = parent_1.moves1[j].thrust
             thrust_p2 = parent_2.moves1[j].thrust
-            if isinstance(thrust_p1, str) and isinstance(thrust_p2, str):
+
+            str_t1 = isinstance(thrust_p1, str)
+            str_t2 = isinstance(thrust_p2, str)
+
+            if str_t1 and str_t2:
                 if thrust_p1 == thrust_p2:
                     if thrust_p1 == SHIELD and randint(0, 100) < 2:
                         thrust = SHIELD
@@ -1217,22 +1268,27 @@ def crossing(solutions, amplitude):
                         thrust = MAX_THRUST
                 else:
                     thrust = MAX_THRUST
-            elif isinstance(thrust_p1, str) or isinstance(thrust_p2, str):
-                if isinstance(thrust_p1, str):
+            elif str_t1 or str_t2:
+                if str_t1:
                     thrust = thrust_p2
                 else:
                     thrust = thrust_p1
             else:
-                thrust = ceil((thrust_p1 + thrust_p2) / 2.0)
+                thrust = (thrust_p1 + thrust_p2) / 2.0
 
             move = Move(angle, thrust)
             child.moves1.append(move)
 
-            angle = round((parent_1.moves2[j].angle + parent_2.moves2[j].angle) / 2.0)
+            # angle = round((parent_1.moves2[j].angle + parent_2.moves2[j].angle) / 2.0)
+            angle = (parent_1.moves2[j].angle + parent_2.moves2[j].angle) / 2.0
 
             thrust_p1 = parent_1.moves2[j].thrust
             thrust_p2 = parent_2.moves2[j].thrust
-            if isinstance(thrust_p1, str) and isinstance(thrust_p2, str):
+
+            str_t1 = isinstance(thrust_p1, str)
+            str_t2 = isinstance(thrust_p2, str)
+
+            if str_t1 and str_t2:
                 if thrust_p1 == thrust_p2:
                     if thrust_p1 == SHIELD and randint(0, 100) < 2:
                         thrust = SHIELD
@@ -1242,13 +1298,13 @@ def crossing(solutions, amplitude):
                         thrust = MAX_THRUST
                 else:
                     thrust = MAX_THRUST
-            elif isinstance(thrust_p1, str) or isinstance(thrust_p2, str):
-                if isinstance(thrust_p1, str):
+            elif str_t1 or str_t2:
+                if str_t1:
                     thrust = thrust_p2
                 else:
                     thrust = thrust_p1
             else:
-                thrust = ceil((thrust_p1 + thrust_p2) / 2.0)
+                thrust = (thrust_p1 + thrust_p2) / 2.0
 
             move = Move(angle, thrust)
             # move.mutate(amplitude)
@@ -1284,6 +1340,9 @@ cho.set_partner(gall)
 gall.set_partner(cho)
 boss1.set_partner(boss2)
 boss2.set_partner(boss1)
+
+cache_boss1 = None
+cache_boss2 = None
 
 turn = 0
 solutions = []
@@ -1337,18 +1396,26 @@ while True:
 
         save_cho, save_gall, save_boss1, save_boss2 = save_pod_states()
 
+        worst_solution_score = 10000000
         worst_solution_score_1 = 10000000
         worst_solution_score_2 = 10000000
+
+        cache_boss1 = boss1.clone()
+        cache_boss1.apply_boss()
+
+        cache_boss2 = boss2.clone()
+        cache_boss2.apply_boss()
 
         for i in range(NB_POPULATION):
             solution = solutions[i]
             solution.score()
             load_pod_states(save_cho, save_gall, save_boss1, save_boss2)
 
-            if solution.result1 < worst_solution_score_1 and solution.result2 < worst_solution_score_2:
+            # if solution.result1 < worst_solution_score_1 and solution.result2 < worst_solution_score_2:
+            if solution.result < worst_solution_score:
                 worst_solution_score = solution.result
-                worst_solution_score_1 = solution.result1
-                worst_solution_score_2 = solution.result2
+                # worst_solution_score_1 = solution.result1
+                # worst_solution_score_2 = solution.result2
 
         solutions.sort(key=attrgetter('result'), reverse=True)
         scores_to_print = str(solutions[0].result)
@@ -1359,32 +1426,54 @@ while True:
 
         index = 0
         sort = solutions.sort
+
         while (elapsed_time + delta_time) < 140:
             index += 1
 
+            profiler = time.clock()
             selected_parents = tournament(solutions)
+            profiler_tournament = (time.clock() - profiler) * 1000
+            profiler = time.clock()
             new_generation = crossing(selected_parents, amplitude)
+            profiler_crossing = (time.clock() - profiler) * 1000
 
+            profiler = time.clock()
             best_children_index = []
+            best_children_score = -100000
             best_children_score_1 = -100000
             best_children_score_2 = -100000
 
+            profiler_mutate = 0.0
+            profiler_score = 0.0
             for i in range(NB_CHILDREN):
                 solution = new_generation[i]
+                profiler = time.clock()
                 solution.mutate(amplitude)
+                profiler_mutate += (time.clock() - profiler) * 1000
+                profiler = time.clock()
                 solution.score()
+                profiler_score += (time.clock() - profiler) * 1000
 
                 result1 = solution.result1
                 result2 = solution.result2
                 result = solution.result
                 load_pod_states(save_cho, save_gall, save_boss1, save_boss2)
 
-                if result1 > best_children_score_1 and result2 > best_children_score_2:
+                # if result1 > best_children_score_1 and result2 > best_children_score_2:
+                if result > best_children_score:
                     best_children_score = result
-                    best_children_score_1 = result1
-                    best_children_score_2 = result2
+                    # best_children_score_1 = result1
+                    # best_children_score_2 = result2
 
-            if best_children_score_1 > worst_solution_score_1 and best_children_score_2 > worst_solution_score_2:
+            profiler_mutate = profiler_mutate / NB_CHILDREN
+            profiler_score = profiler_score / NB_CHILDREN
+
+            profiler_best_children = (time.clock() - profiler) * 1000
+
+            profiler = time.clock()
+            profiler_sort = 0.0
+            # if best_children_score_1 > worst_solution_score_1 and best_children_score_2 > worst_solution_score_2 :
+            if best_children_score > worst_solution_score:
                 for i in range(NB_CHILDREN):
                     # Set the indexes of the best childrens to test againt actual solutions
                     if i < NB_BEST_CHILDREN:
@@ -1393,8 +1482,9 @@ while True:
                         j = 0
                         found = False
                         while (j < NB_BEST_CHILDREN - 1) and not found:
-                            if (result1 > new_generation[best_children_index[j]].result1) \
-                                    and (result2 > new_generation[best_children_index[j]].result2):
+                            # if (result1 > new_generation[best_children_index[j]].result1) \
+                            #   and (result2 > new_generation[best_children_index[j]].result2):
+                            if (result > new_generation[best_children_index[j]].result):
                                 best_children_index[j] = i
                                 found = True
                             j += 1
@@ -1406,6 +1496,8 @@ while True:
 
                 sort(key=attrgetter('result'), reverse=True)
 
+            profiler_new_generation = (time.clock() - profiler) * 1000
+
             amplitude = amplitude * COEFFCIENT_AMPLITUDE
             new_time = (time.clock() - start_time) * 1000.0  # ms
             delta_time = new_time - elapsed_time
@@ -1413,6 +1505,8 @@ while True:
 
             scores_to_print += ',' + str(solutions[0].result)
             # print_msg(None, 'new_time : ' + str(elapsed_time) + ', delta time = ' + str(delta_time))
+
+            # print('profiling: tournament = ' + str(round(profiler_tournament,4)) + ', crossing = ' + str(round(profiler_crossing,4)) + ', mutate = ' + str(round(profiler_mutate,4)) + ', score =  ' + str(round(profiler_score,4)) + ', best children = ' + str(round(profiler_best_children,4)) + ', sort = ' + str(round(profiler_sort,4)) + ', new generation = ' + str(round(profiler_new_generation,4)), file=sys.stderr)
 
         json += scores_to_print + '],'
         json += '"nb_generation":' + str(index) + ','
