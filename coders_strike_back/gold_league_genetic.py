@@ -63,11 +63,13 @@ DEFAULT_SPEED = 100  # Arbitraty value to initiate the game to avoid a null spee
 
 # GENETIC ALGO
 NB_MOVES = 6
-NB_POPULATION = 20  # must be a pair value
-NB_CHILDREN = 10
-NB_BEST_CHILDREN = 5  # less than nb children
-NB_TOURNAMENT = 2  # 1/3 of the global population for now
-COEFFCIENT_AMPLITUDE = 0.8
+NB_POPULATION = 10  # must be a pair value
+NB_CHILDREN = 5
+NB_TOURNAMENT = 5  # number of parents in the pool
+NB_NEW_GENERATION = 10  # CHILDREN + TOURNAMENT
+NB_BEST_CHILDREN = 5  # Best children to merge in previous generation
+SIZE_TOURNAMENT = 2  # number of contestants at each tournament
+COEFFCIENT_AMPLITUDE = 0.7
 COEFFICIENT_MUTATION_FROM_REF = 0.5
 
 
@@ -1224,28 +1226,25 @@ def play(list_pods):
 
 def tournament(solutions):
     winners = []
-    winners.append(solutions[0].clone())  # best solution is qualified
-
+    winners.append(solutions[0])  # Add best solution to be sure it is once
     for i in range(NB_TOURNAMENT - 1):
-        challenger_1 = randint(0, NB_POPULATION - 1)
-        challenger_2 = randint(0, NB_POPULATION - 1)
+        index_winner = -1
+        for j in range(SIZE_TOURNAMENT):
+            index_opponent = randint(0, NB_POPULATION - 1)
 
-        if solutions[challenger_1].result > solutions[challenger_2].result:
-            # if (solutions[challenger_1].result1 > solutions[challenger_2].result1) \
-            #        and (solutions[challenger_1].result2 > solutions[challenger_2].result2):
-            winners.append(solutions[challenger_1].clone())
-        else:
-            winners.append(solutions[challenger_2].clone())
+            if (index == -1) or (solutions[index_opponent].result > solutions[index_winner].result):
+                index_winner = index_opponent
 
+        winners.append(solutions[index_winner].clone())
     return winners
 
 
-def crossing(solutions, amplitude):
-    new_generation = solutions
+def crossing(parents, amplitude):
+    new_generation = parents
 
     for i in range(NB_CHILDREN):
-        parent_1 = solutions[randint(0, NB_TOURNAMENT - 1)]
-        parent_2 = solutions[randint(0, NB_TOURNAMENT - 1)]
+        parent_1 = parents[randint(0, NB_TOURNAMENT - 1)]
+        parent_2 = parents[randint(0, NB_TOURNAMENT - 1)]
 
         child = Solution()
         for j in range(NB_MOVES):
@@ -1313,6 +1312,28 @@ def crossing(solutions, amplitude):
         new_generation.append(child)
 
     return new_generation
+
+
+def select_survivors(parents, children):
+    '''
+    Selection of the survivors for the next generation
+    Based on preselection approach (https://fr.slideshare.net/riyadparvez/selection-in-evolutionary-algorithm)
+    @params parents : previous solutions sorted with best fit first
+    @params children : new solutions sorted with worst fit first
+    @return None
+    '''
+
+    children.sort(key=attrgetter('result'), reverse=True)
+    children = children[0:NB_BEST_CHILDREN]
+
+    worst_parent_index = NB_POPULATION - 1
+    for i in reversed(range(NB_BEST_CHILDREN)):
+        if children[i].result > parents[worst_parent_index].result:
+            parents[worst_parent_index] = children[i]
+            worst_parent_index -= 1
+            # else : child is eliminated
+
+    parents.sort(key=attrgetter('result'), reverse=True)
 
 
 # Initialization
@@ -1425,8 +1446,6 @@ while True:
         elapsed_time = new_time
 
         index = 0
-        sort = solutions.sort
-
         while (elapsed_time + delta_time) < 140:
             index += 1
 
@@ -1445,7 +1464,7 @@ while True:
 
             profiler_mutate = 0.0
             profiler_score = 0.0
-            for i in range(NB_CHILDREN):
+            for i in range(NB_NEW_GENERATION):
                 solution = new_generation[i]
                 profiler = time.clock()
                 solution.mutate(amplitude)
@@ -1465,36 +1484,8 @@ while True:
                     # best_children_score_1 = result1
                     # best_children_score_2 = result2
 
-            profiler_mutate = profiler_mutate / NB_CHILDREN
-            profiler_score = profiler_score / NB_CHILDREN
-
-            profiler_best_children = (time.clock() - profiler) * 1000
-
-            profiler = time.clock()
-            profiler_sort = 0.0
-            # if best_children_score_1 > worst_solution_score_1 and best_children_score_2 > worst_solution_score_2 :
             if best_children_score > worst_solution_score:
-                for i in range(NB_CHILDREN):
-                    # Set the indexes of the best childrens to test againt actual solutions
-                    if i < NB_BEST_CHILDREN:
-                        best_children_index.append(i)
-                    else:
-                        j = 0
-                        found = False
-                        while (j < NB_BEST_CHILDREN - 1) and not found:
-                            # if (result1 > new_generation[best_children_index[j]].result1) \
-                            #   and (result2 > new_generation[best_children_index[j]].result2):
-                            if (result > new_generation[best_children_index[j]].result):
-                                best_children_index[j] = i
-                                found = True
-                            j += 1
-
-                            # replace worst previous solutions by best of new generation (being sure at least one is greater than the previous worst)
-                for i in range(NB_BEST_CHILDREN):
-                    solutions.pop()
-                    solutions.append(new_generation[best_children_index[i]])
-
-                sort(key=attrgetter('result'), reverse=True)
+                select_survivors(solutions, new_generation)
 
             profiler_new_generation = (time.clock() - profiler) * 1000
 
