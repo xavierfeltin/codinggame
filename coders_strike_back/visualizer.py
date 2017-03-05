@@ -1,6 +1,7 @@
 import json
 import numpy as np
 import matplotlib.pyplot as plt
+from math import ceil
 
 class Data:
     def __init__(self):
@@ -122,12 +123,15 @@ def visualize_convergence(game):
     for data in game.data:
         try:
             indexes.append(data.scores.index(data.best_score))
+            print(data.scores.index(data.best_score))
         except(ValueError):
             indexes.append(-5)
         nb_generations.append(data.nb_generation)
         turns.append(data.turn)
 
-    plt.title('Number of generations to reach the best score')
+
+
+    plt.title('Number of generations to reach the best score (avg: ' + str(ceil(sum(indexes) / float(len(indexes)))) + ')')
     plt.xlabel('Turns')
     plt.ylabel('Generation')
 
@@ -139,6 +143,14 @@ if __name__ == '__main__':
     game = parse_json('resources/json_coder_strike_back_2.json')
     game2 = parse_json('resources/json_coder_strike_back_3.json')
     game3 = parse_json('resources/json_coder_strike_back_4.json')
-    visualize_convergence(game)
-    visualize_convergence(game2)
-    visualize_convergence(game3)
+    game4 = parse_json('resources/json_coder_strike_back_5.json')
+    game5 = parse_json('resources/json_coder_strike_back_6.json')
+    game6 = parse_json('resources/json_coder_strike_back_7.json')
+    game7 = parse_json('resources/json_coder_strike_back_new_selection.json')
+    game8 = parse_json('resources/json_coder_strike_back_new_selection_2.json')
+    #visualize_convergence(game)
+    #visualize_convergence(game2)
+    #visualize_convergence(game3)
+    #visualize_convergence(game4)
+    visualize_convergence(game7)
+    visualize_convergence(game8)
