@@ -1,8 +1,4 @@
 import sys
-import math
-from math import fabs
-
-from sympy.assumptions.sathandlers import fact
 
 from Game import Game
 from Order import Order
@@ -26,9 +22,12 @@ class Factory:
         self.max_ennemy_distance = 0
         self.min_ennemy_distance = 20
 
-        self.cyborgs_coming = {}
-        self.cyborgs_coming[FRIEND] = []
-        self.cyborgs_coming[ENNEMY] = []
+        self.nb_friendly_troops = 0
+        self.nb_ennemy_troops = 0
+
+        #self.cyborgs_coming = {}
+        #self.cyborgs_coming[FRIEND] = []
+        #self.cyborgs_coming[ENNEMY] = []
         self.bomb_eta = -1
 
         self.count_zero_prod = 0
@@ -75,11 +74,11 @@ class Factory:
 
     def set_owner(self, owner):
 
-        if (self.owner == -1 or self.owner == 1) and self.owner != owner:
-            self.cyborgs_coming[NEUTRAL] = self.cyborgs_coming.pop(ENNEMY)
-            self.cyborgs_coming[NEUTRAL_2] = self.cyborgs_coming.pop(FRIEND)
-            self.cyborgs_coming[FRIEND] = self.cyborgs_coming.pop(NEUTRAL)
-            self.cyborgs_coming[ENNEMY] = self.cyborgs_coming.pop(NEUTRAL_2)
+        #if (self.owner == -1 or self.owner == 1) and self.owner != owner:
+        #    self.cyborgs_coming[NEUTRAL] = self.cyborgs_coming.pop(ENNEMY)
+        #    self.cyborgs_coming[NEUTRAL_2] = self.cyborgs_coming.pop(FRIEND)
+        #    self.cyborgs_coming[FRIEND] = self.cyborgs_coming.pop(NEUTRAL)
+        #    self.cyborgs_coming[ENNEMY] = self.cyborgs_coming.pop(NEUTRAL_2)
 
         self.owner = owner
 
@@ -141,22 +140,23 @@ class Factory:
         '''
         self.links[destination_id].troops[destination_id].append(new_troop)
 
-    def add_coming_cyborgs(self, new_troop):
-        '''
-        Add new troops to the factory
-        :param new_troop:
-        :return:
-        '''
-        if self.owner == ENNEMY:
-            if new_troop.owner == ENNEMY:
-                self.cyborgs_coming[FRIEND][new_troop.eta-1] += new_troop.number
-            else:
-                self.cyborgs_coming[ENNEMY][new_troop.eta - 1] += new_troop.number
-        else: # same for player and neutral structure
-            if new_troop.owner == ENNEMY:
-                self.cyborgs_coming[ENNEMY][new_troop.eta-1] += new_troop.number
-            else:
-                self.cyborgs_coming[FRIEND][new_troop.eta - 1] += new_troop.number
+    #def add_coming_cyborgs(self, new_troop):
+    #    '''
+    #    Add new troops to the factory
+    #    :param new_troop:
+    #    :return:
+    #    '''
+    #    if self.owner == ENNEMY:
+    #       if new_troop.owner == ENNEMY:
+    #        self.cyborgs_coming[FRIEND][new_troop.eta-1] += new_troop.number
+    #        else:
+    #            self.cyborgs_coming[ENNEMY][new_troop.eta - 1] += new_troop.number
+    #    else: # same for player and neutral structure
+    #        if new_troop.owner == ENNEMY:
+    #            self.cyborgs_coming[ENNEMY][new_troop.eta-1] += new_troop.number
+    #        else:
+    #            self.cyborgs_coming[FRIEND][new_troop.eta - 1] += new_troop.number
+
 
     def set_bomb_eta(self, eta):
         '''
@@ -202,11 +202,8 @@ class Factory:
         Return true if a bomb can be sent by the factory
         '''
 
-        # nb_cyborg_player = sum(fact_destination.cyborgs_coming[ENNEMY][0:link.distance])
-        # nb_cyborg_ennemy = sum(fact_destination.cyborgs_coming[FRIEND][0:link.distance])
-
-        nb_cyborg_player = sum(fact_destination.cyborgs_coming[ENNEMY][0:NB_PREDICTED_TURN_BOMB])
-        nb_cyborg_ennemy = sum(fact_destination.cyborgs_coming[FRIEND][0:NB_PREDICTED_TURN_BOMB])
+        nb_cyborg_player = self.nb_friendly_troops
+        nb_cyborg_ennemy = self.nb_ennemy_troops
 
         estimated_stock = fact_destination.get_estimated_stock(NB_PREDICTED_TURN_BOMB - self.count_zero_prod)
 
@@ -214,7 +211,7 @@ class Factory:
         nb_defense_left = evaluated_defense - nb_cyborg_player
 
         return fact_destination.owner == -1 and link.distance <= MAX_BOMB_DISTANCE and nb_defense_left >= MIN_DEFENSE_TO_SEND_BOMB and (fact_destination.current_production >= 2 \
-                                                                                                                                        or len(Game.factories_ennemy) == 1) and fact_destination.bomb_eta == -1 and Game.available_bomb != 0
+                or len(Game.factories_ennemy) == 1) and fact_destination.bomb_eta == -1 and Game.available_bomb != 0
 
     def is_production_increasing_feasible(self, is_danger_situation):
         '''
@@ -236,49 +233,19 @@ class Factory:
         Solve the current turn for the factory
         '''
 
-        # Move troops and bombs
-        # move troops is simulated by using the first index of the cyborg_coming list
-        if self.bomb_eta >= 0:
-            self.bomb_eta -= 1
-
-        nb_cyborgs_friends = self.cyborgs_coming[FRIEND][0]
-        nb_cyborgs_ennemies = self.cyborgs_coming[ENNEMY][0]
-
-        self.cyborgs_coming[ENNEMY] = self.cyborgs_coming[ENNEMY][1:] + self.cyborgs_coming[ENNEMY][:1]
-        self.cyborgs_coming[ENNEMY][len(self.cyborgs_coming[ENNEMY]) - 1] = 0
-
-        self.cyborgs_coming[FRIEND] = self.cyborgs_coming[FRIEND][1:] + self.cyborgs_coming[FRIEND][:1]
-        self.cyborgs_coming[FRIEND][len(self.cyborgs_coming[FRIEND]) - 1] = 0
+        self.update_troops_after_moves()
 
         #Execute orders = troops leaving the factory are not taken into account
-        move_orders = [order for order in self.orders if order.type == Order.MOVE or order.type == Order.INC]
-        for order in move_orders:
-            self.stock -= order.number
-
-            if order.type == Order.INC:
-                self.production += 1
-
-                if self.count_zero_prod <= 0:
-                    self.current_production = self.production
-            else: #Move order
-                if order.destination.owner == ENNEMY:
-                    if self.owner == ENNEMY:
-                        order.destination.cyborgs_coming[FRIEND][self.links[order.destination.f_id].distance-1] = order.number
-                    else:
-                        order.destination.cyborgs_coming[ENNEMY][self.links[order.destination.f_id].distance - 1] = order.number
-                else:
-                    if self.owner == FRIEND:
-                        order.destination.cyborgs_coming[FRIEND][self.links[order.destination.f_id].distance-1] = order.number
-                    else:
-                        order.destination.cyborgs_coming[ENNEMY][self.links[order.destination.f_id].distance - 1] = order.number
+        self.emit_orders()
+        self.execute_orders()
 
         # Solve battles (a production takes place before battle)
         if self.owner == 1:
-            new_stock = self.current_production + self.stock - nb_cyborgs_ennemies + nb_cyborgs_friends
+            new_stock = self.current_production + self.stock - self.nb_ennemy_troops + self.nb_friendly_troops
         elif self.owner == -1:
-            new_stock = self.current_production + self.stock - nb_cyborgs_friends + nb_cyborgs_ennemies
+            new_stock = self.current_production + self.stock - self.nb_friendly_troops + self.nb_ennemy_troops
         else:
-            new_stock = self.stock - nb_cyborgs_friends - nb_cyborgs_ennemies
+            new_stock = self.stock - self.nb_friendly_troops - self.nb_ennemy_troops
 
         owner = self.owner
         if owner == 1 and new_stock < 0:
@@ -286,7 +253,7 @@ class Factory:
         elif owner == -1 and new_stock < 0:
             owner = 1
         elif owner == 0 and new_stock < 0:
-            if nb_cyborgs_friends > nb_cyborgs_ennemies:
+            if self.nb_friendly_troops > self.nb_ennemy_troops:
                 owner = 1
             else:
                 owner = -1
@@ -310,109 +277,6 @@ class Factory:
         # stock is always positive (negative is positive for new owner)
         self.stock = abs(new_stock)
 
-
-    def solver(self, fact_destination):
-        '''
-        Compute the state of the destination factory function of the distance with a maximum simulation time
-        @param fact_destination : factory targeted
-        @return a clone of the factory updated by the solver
-        '''
-
-        clone_dest = fact_destination.clone()
-
-        if fact_destination.f_id == self.f_id:
-            # Predict its own state in the future
-            time = NB_PREDICTED_TURN
-        else:
-            # Predict the future of the target function of the distance between them
-            time = min(self.links[fact_destination.f_id].distance, NB_PREDICTED_TURN)
-
-        i = 0
-        while i <= time:
-
-            # Move troops and bombs
-            # move troops is simulated by using the first index of the cyborg_coming list
-            if clone_dest.bomb_eta >= 0:
-                clone_dest.bomb_eta -= 1
-
-            # Solve battles (a production takes place before battle)
-            if clone_dest.owner == 1:
-                new_stock = clone_dest.current_production + clone_dest.stock - clone_dest.cyborgs_coming[ENNEMY][0] + clone_dest.cyborgs_coming[FRIEND][0]
-            elif fact_destination.owner == -1:
-                new_stock = clone_dest.current_production + clone_dest.stock - clone_dest.cyborgs_coming[FRIEND][0] + clone_dest.cyborgs_coming[ENNEMY][0]
-            else:
-                new_stock = clone_dest.stock - clone_dest.cyborgs_coming[FRIEND][0] - clone_dest.cyborgs_coming[ENNEMY][0]
-
-            owner = clone_dest.owner
-            if owner == 1 and new_stock < 0:
-                owner = -1
-            elif owner == -1 and new_stock < 0:
-                owner = 1
-            elif owner == 0 and new_stock < 0:
-                if clone_dest.cyborgs_coming[FRIEND][0] > clone_dest.cyborgs_coming[ENNEMY][0]:
-                    owner = 1
-                else:
-                    owner = -1
-                    # else the factory is still neutral
-
-            # Manage bomb explosion
-            if clone_dest.bomb_eta == 0:
-                clone_dest.count_zero_prod = 5
-
-            if clone_dest.count_zero_prod > 0:
-                clone_dest.current_production = 0
-            else:
-                clone_dest.current_production = clone_dest.production
-
-            if clone_dest.count_zero_prod >= 0:
-                clone_dest.count_zero_prod -= 1
-
-            # Update the destination factory
-            clone_dest.owner = owner
-            clone_dest.stock = new_stock
-
-            # Produce new units for the factories close enough during the simulation turn
-            sorted_links = sorted(clone_dest.links.values(), key=lambda link: link.distance)
-
-            j = 0
-            distance = sorted_links[j].distance
-            while (distance <= time) and j < len(sorted_links):
-
-                # origin = sorted_links[connected_factories_id[j]].destination[clone_dest.f_id]
-                origin = sorted_links[j].destination[clone_dest.f_id]
-                if origin.owner != 0:
-                    nb_sent_troops = origin.production
-
-                    if clone_dest.owner == origin.owner or (clone_dest.owner == 0 and origin.owner == 1):
-                        clone_dest.cyborgs_coming[FRIEND][distance] += nb_sent_troops
-                    elif clone_dest.owner != origin.owner:
-                        clone_dest.cyborgs_coming[ENNEMY][distance] += nb_sent_troops
-
-                j += 1
-                if j < len(sorted_links):
-                    distance = sorted_links[j].distance
-
-            if len(clone_dest.cyborgs_coming[ENNEMY]) > 0:
-                # clone_dest.cyborgs_coming[ENNEMY].pop(0) #replace pop by shift
-                clone_dest.cyborgs_coming[ENNEMY] = clone_dest.cyborgs_coming[ENNEMY][1:] + clone_dest.cyborgs_coming[ENNEMY][:1]
-                clone_dest.cyborgs_coming[ENNEMY][len(clone_dest.cyborgs_coming[ENNEMY]) - 1] = 0
-
-            if len(clone_dest.cyborgs_coming[FRIEND]) > 0:
-                # clone_dest.cyborgs_coming[FRIEND].pop(0) #replace pop by shift
-                clone_dest.cyborgs_coming[FRIEND] = clone_dest.cyborgs_coming[FRIEND][1:] + clone_dest.cyborgs_coming[FRIEND][:1]
-                clone_dest.cyborgs_coming[FRIEND][len(clone_dest.cyborgs_coming[FRIEND]) - 1] = 0
-
-            i += 1
-
-        # TODO:
-        # Define the clone function of a factory => ok
-        # Push the troop on the factory forward instad of using i each time => ok
-        # Manage the production if there is a bomb coming !!! => ok
-        # Add prediction of production of neighbor factories => on going
-        # Use the clone to estimate the number of troops to send (see if useful for link priority as well)
-
-        return clone_dest
-
     def compute_troops_to_send(self, fact_destination):
         '''
         Compute the number of troops to send to conquer the objective on next ruen as if the distance was one turn
@@ -423,14 +287,14 @@ class Factory:
         # euristic : nb new cyborgs = factory production
 
         if self.owner == fact_destination.owner :
-            nb_cyborg_friends = fact_destination.cyborgs_coming[FRIEND][0]
-            nb_cyborg_ennemies = fact_destination.cyborgs_coming[ENNEMY][0]
+            nb_cyborg_friends = fact_destination.nb_friendly_troops
+            nb_cyborg_ennemies = fact_destination.nb_ennemy_troops
         elif fact_destination.owner == 0:
-            nb_cyborg_friends = fact_destination.cyborgs_coming[FRIEND][0]
-            nb_cyborg_ennemies = fact_destination.cyborgs_coming[ENNEMY][0]
+            nb_cyborg_friends = fact_destination.nb_friendly_troops
+            nb_cyborg_ennemies = fact_destination.nb_ennemy_troops
         else:
-            nb_cyborg_friends = fact_destination.cyborgs_coming[ENNEMY][0]
-            nb_cyborg_ennemies = fact_destination.cyborgs_coming[FRIEND][0]
+            nb_cyborg_friends = fact_destination.nb_ennemy_troops
+            nb_cyborg_ennemies = fact_destination.nb_friendly_troops
 
         link = self.links[fact_destination.f_id]
 
@@ -461,63 +325,33 @@ class Factory:
         Define the orders emitted by owned factory
         '''
 
-        message = ''
-        message_bomb = ''
-        message_increase = ''
+        self.define_conquest_priorities()
+        factory_stock = self.stock
+        factory_production = self.production
 
-        '''
-        delta_agression = sum(self.cyborgs_coming[ENNEMY][0:NB_PREDICTED_TURN]) - sum(self.cyborgs_coming[FRIEND][0:NB_PREDICTED_TURN])
-        is_danger_situation = delta_agression > (self.stock - 10)
+        delta_agression = self.nb_ennemy_troops - self.nb_friendly_troops
+        is_danger_situation = delta_agression > (factory_stock - 10) or (self.owner == -1) or (self.count_zero_prod > 0)
 
         if self.f_id == 0:
-            print('danger situation = ' + str(is_danger_situation) + ', delta_agression = ' + str(delta_agression), file=sys.stderr)
+            print('danger situation = ' + str(is_danger_situation) + ', delta_agression = ' + str(delta_agression) + ', zero prod = ' + str(self.count_zero_prod), file=sys.stderr)
 
         if (self.is_production_increasing_feasible(is_danger_situation)):
-            self.stock -= 10
-            self.production += 1
-            self.count_next_increase = COUNT_INCREASE
-            message_increase = 'INC ' + str(self.f_id)
-
-        if self.bomb_eta == 1 :
-            keep_troops = 0
-        else:
-            keep_troops = max(delta_agression, 0)
-
-        if self.current_production == 0:
-            if len(factories_owned) == 1:
-                sendable_troops = max(self.stock - keep_troops, 0)
-            else:
-                sendable_troops = 0
-        else:
-            sendable_troops = max(self.stock - keep_troops, 0)
-        '''
-
-        simulated_factory = self.solver(self)
-
-        delta_agression = simulated_factory.cyborgs_coming[ENNEMY][0] - simulated_factory.cyborgs_coming[FRIEND][0]
-        is_danger_situation = delta_agression > (simulated_factory.stock - 10) or (simulated_factory.owner == -1) or (simulated_factory.count_zero_prod > 0)
-
-        if simulated_factory.f_id == 0:
-            print('danger situation = ' + str(is_danger_situation) + ', delta_agression = ' + str(delta_agression) + ', zero prod = ' + str(simulated_factory.count_zero_prod), file=sys.stderr)
-
-        if (simulated_factory.is_production_increasing_feasible(is_danger_situation)):
-            simulated_factory.stock -= 10
-            simulated_factory.production += 1
-            simulated_factory.count_next_increase = COUNT_INCREASE
+            factory_stock -= 10
+            factory_production += 1
             self.orders.append(Order(Order.INC, self, None, 10))
 
-        if simulated_factory.bomb_eta == 1:
+        if self.bomb_eta == 1:
             keep_troops = 0
         else:
             keep_troops = max(delta_agression, 0)
 
         if self.current_production == 0:
             if len(Game.factories_owned) == 1:
-                sendable_troops = max(self.stock - keep_troops, 0)
+                sendable_troops = max(factory_stock - keep_troops, 0)
             else:
                 sendable_troops = 0
         else:
-            sendable_troops = max(self.stock - keep_troops, 0)
+            sendable_troops = max(factory_stock - keep_troops, 0)
 
         print('factory : ' + str(self.f_id), file=sys.stderr)
 
@@ -525,8 +359,9 @@ class Factory:
         while len(sorted_links) > MIN_FACTORY_CONSIDERED and sorted_links[len(sorted_links) - 1].distance >= MAX_DISTANCE_CONSIDERED:
             sorted_links.pop()
 
-        # sorted_links = sorted(self.links.values(), key=lambda link: link.conquest_priority[self.f_id], reverse=True)
-        sorted_links = sorted(sorted_links, key=lambda link: link.conquest_priority[self.f_id], reverse=True)
+        #sorted_links = sorted(sorted_links, key=lambda link: link.conquest_priority[self.f_id], reverse=True)
+        #TODO : change sort to use new system of priorities
+        sorted_priories = sorted(self.priorities.items(), key=lambda priority: priority, reverse=True)
 
         for link in sorted_links:
             fact_destination = link.destination[self.f_id]
@@ -569,7 +404,7 @@ class Factory:
 
                     self.orders.append(Order(Order.MOVE, self, destination, send_troops))
 
-                    self.stock -= send_troops
+                    factory_stock -= send_troops
                     sendable_troops -= send_troops
 
                     if sendable_troops == 0:
@@ -631,12 +466,12 @@ class Factory:
         @param origin : factory from where the cyborgs are emitted from
         '''
 
-        estimated_distance = min(self.distance + 1, 20)
+        estimated_distance = min(self.links[factory_destination.f_id].distance + 1, 20)
 
-        nb_cyborg_ennemies = sum(factory_destination.cyborgs_coming[ENNEMY][estimated_distance:NB_PREDICTED_TURN])
-        nb_cyborg_friends = sum(factory_destination.cyborgs_coming[FRIEND][estimated_distance:NB_PREDICTED_TURN])
+        nb_cyborg_ennemies = self.nb_ennemy_troops #sum(factory_destination.cyborgs_coming[ENNEMY][estimated_distance:NB_PREDICTED_TURN])
+        nb_cyborg_friends = self.nb_friendly_troops #sum(factory_destination.cyborgs_coming[FRIEND][estimated_distance:NB_PREDICTED_TURN])
 
-        estimated_stock = factory_destination.get_estimated_stock(self.distance - factory_destination.count_zero_prod)
+        estimated_stock = factory_destination.get_estimated_stock(self.links[factory_destination.f_id].distance - factory_destination.count_zero_prod)
 
         if factory_destination.owner == 1 and nb_cyborg_ennemies > (estimated_stock + nb_cyborg_friends):  # and self.distance < (origin.min_friend_distance + FIRST_EXPLORATION_DELTA)
             # R2 : help your neighbor
@@ -651,7 +486,7 @@ class Factory:
             # priority += factory_destination.production * 100
             # priority -= (origin.stock - factory_destination.stock) #Smaller the difference of stock, best it is
             priority += factory_destination.production * 10
-            priority += len(sim_origin.alternative_pathes[factory_destination.f_id]) * 100
+            priority += len(self.alternative_pathes[factory_destination.f_id]) * 100
             priority += 20 - self.distance
 
         elif factory_destination.owner == 1 and factory_destination.production <= 1 and estimated_stock <= 10:
@@ -660,16 +495,16 @@ class Factory:
             priority += (20 - self.distance) * 10
             priority += 3 - factory_destination.production
 
-        elif factory_destination.owner == -1 and ((factory_destination.bomb_eta != 0 and self.distance == (factory_destination.bomb_eta + 1)) or (factory_destination.count_zero_prod - 1 == self.distance)):
+        elif factory_destination.owner == -1 and ((factory_destination.bomb_eta != 0 and self.links[factory_destination.f_id].distance  == (factory_destination.bomb_eta + 1)) or (factory_destination.count_zero_prod - 1 == self.links[factory_destination.f_id].distance )):
             # R4 : attack your close opponent where he is bombed
             priority = 7 * 1000
             priority += (20 - factory_destination.bomb_eta * 10)
             priority += (5 - factory_destination.count_zero_prod * 10)
             priority += factory_destination.production
-        elif factory_destination.owner == -1 and (estimated_stock + nb_cyborg_friends - nb_cyborg_ennemies) < 20 and self.distance < (sim_origin.min_ennemy_distance + FIRST_EXPLORATION_DELTA) and factory_destination.current_production >= 1:
+        elif factory_destination.owner == -1 and (estimated_stock + nb_cyborg_friends - nb_cyborg_ennemies) < 20 and self.links[factory_destination.f_id].distance  < (self.min_ennemy_distance + FIRST_EXPLORATION_DELTA) and factory_destination.current_production >= 1:
             # R5 : attack your close opponent where he is weak
             priority = 6 * 1000
-            # priority += (20 - self.distance) * 100
+            # priority += (20 - self.links[factory_destination.f_id].distance ) * 100
             # priority += (3-factory_destination.current_production) * 10 - factory_destination.stock
             priority -= estimated_stock + nb_cyborg_friends
             priority += nb_cyborg_ennemies
@@ -678,11 +513,11 @@ class Factory:
             # R6 : expand
             priority = 5 * 1000
             priority += factory_destination.production * 10 - factory_destination.stock
-            priority += 20 - self.distance
+            priority += 20 - self.links[factory_destination.f_id].distance
         elif factory_destination.owner == -1 and nb_cyborg_friends < 20:
             # R7 : attack your ennemy where is weak
             priority = 4 * 1000
-            priority += (20 - self.distance) * 10
+            priority += (20 - self.links[factory_destination.f_id].distance ) * 10
         elif factory_destination == 1:
             # R8 :defense
             priority = 3 * 1000
@@ -692,7 +527,7 @@ class Factory:
         else:
             # R9 :attack
             priority = 1 * 1000
-            priority += (20 - self.distance) * 10
+            priority += (20 - self.links[factory_destination.f_id].distance ) * 10
             priority += (3 - factory_destination.current_production)
 
         return priority
@@ -709,3 +544,35 @@ class Factory:
             msg += ';'
 
         return msg
+
+    def update_troops_after_moves(self):
+        '''
+        update the number of friendly/ennemy troops engaged in battle at the factory
+        '''
+
+        self.nb_friendly_troops = 0
+        self.nb_ennemy_troops = 0
+
+        for link in self.links.values():
+            self.nb_friendly_troops += link.get_friendly_troops_for_battle(self)
+            self.nb_ennemy_troops += link.get_ennemy_troops_for_battle(self)
+            self.bomb_eta = link.get_bomb_eta(self)
+
+    def execute_orders(self):
+        '''
+        Execute the orders for the factory
+        '''
+
+        move_orders = [order for order in self.orders if order.type == Order.MOVE or order.type == Order.INC]
+        for order in move_orders:
+            self.stock -= order.number
+            if order.type == Order.INC:
+                self.production += 1
+                self.count_next_increase = COUNT_INCREASE
+                if self.count_zero_prod <= 0:
+                    self.current_production = self.production
+
+            elif order.type == Order.MOVE:  #Move order
+                self.links[order.destination.f_id].add_troops(self, order.destination, order.number, False)
+            else: #Bomb order
+                self.links[order.destination.f_id].add_troops(self, order.destination, 0, True)

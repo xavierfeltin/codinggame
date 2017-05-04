@@ -1,6 +1,3 @@
-import Factory
-import Link
-
 class Game:
     '''
     Manage all the global states of the game
@@ -93,10 +90,32 @@ class Game:
         return msg[:-1]
 
     @staticmethod
-    def simulate_turn(self):
+    def simulate_turn():
         '''
         Simulate one full turn for all the factories
+        1) Move existing troops and bombs
+        2) Execute user orders
+        3) Produce new cyborgs in all factories
+        4) Solve battles
+        5) Make the bombs explode
+        6) Check end conditions
         '''
 
-        for factory in self.factories:
-            factory.solve()
+        #1) Move existing troops and bombs
+        for link in Game.links:
+            link.move_troops()
+
+        #2) Execute user orders
+        #3) Produce new cyborgs in all factories
+        #4) Solve battles
+        #5) Make the bombs explode
+        for factory in Game.factories:
+            factory.update_troops_after_moves()
+            factory.solve_turn()
+
+        #6) Check end conditions
+        #TODO ?
+
+    @staticmethod
+    def next_id_troop():
+        return max(troop.t_id for troop in Game.troops) + 1
