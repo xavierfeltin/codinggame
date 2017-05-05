@@ -19,6 +19,8 @@ class TestFactory(unittest.TestCase):
         Fact 1 - Fact 3 = distance 7
         '''
 
+        self.game = Game()
+
         self.fact_1 = Factory(0)
         self.fact_2 = Factory(1)
         self.fact_3 = Factory(2)
@@ -63,7 +65,7 @@ class TestFactory(unittest.TestCase):
         for troop in troops:
             troop.origin.sent_troops(troop.destination.f_id, troop)
             #troop.destination.add_coming_cyborgs(troop)
-            Game.troops.append(troop)
+            self.game.real.troops.append(troop)
 
     def test_valid_set_distances_troops(self):
         self.set_up()
@@ -79,7 +81,10 @@ class TestFactory(unittest.TestCase):
 
     def test_solve_turn_neutral_factory_remains_neutral(self):
         self.set_up()
-        self.fact_2.solve_turn()
+
+        self.fact_2.update_troops_after_moves()
+        self.fact_2.execute_orders()
+        self.fact_2.solve_battle()
 
         self.assertEqual(self.fact_2.owner, 0)
         self.assertEqual(self.fact_2.stock, 0)
@@ -88,7 +93,10 @@ class TestFactory(unittest.TestCase):
         self.set_up()
         troop = Troop(10, 1, 0, 1, False, self.link_1_2, self.fact_1, self.fact_2)
         self.set_troops([troop])
-        self.fact_2.solve_turn()
+
+        self.fact_2.update_troops_after_moves()
+        self.fact_2.execute_orders()
+        self.fact_2.solve_battle()
 
         self.assertEqual(self.fact_2.owner, FRIEND)
         self.assertEqual(self.fact_2.stock, 1)
@@ -97,7 +105,10 @@ class TestFactory(unittest.TestCase):
         self.set_up()
         troop = Troop(10, 2, 0, -1, False, self.link_3_2, self.fact_3, self.fact_2)
         self.set_troops([troop])
-        self.fact_2.solve_turn()
+
+        self.fact_2.update_troops_after_moves()
+        self.fact_2.execute_orders()
+        self.fact_2.solve_battle()
 
         self.assertEqual(self.fact_2.owner, ENNEMY)
         self.assertEqual(self.fact_2.stock, 2)
@@ -105,7 +116,10 @@ class TestFactory(unittest.TestCase):
     def test_solve_turn_friend_factory_send_troops(self):
         self.set_up()
         self.fact_1.orders.append(Order(Order.MOVE, self.fact_1, self.fact_2, 3))
-        self.fact_1.solve_turn()
+
+        self.fact_1.update_troops_after_moves()
+        self.fact_1.execute_orders()
+        self.fact_1.solve_battle()
 
         self.assertEqual(self.fact_1.owner, FRIEND)
         self.assertEqual(self.fact_1.stock, 4)
@@ -115,7 +129,10 @@ class TestFactory(unittest.TestCase):
         self.set_up()
         self.fact_1.stock = 13
         self.fact_1.orders.append(Order(Order.INC, self.fact_1, None, 10))
-        self.fact_1.solve_turn()
+
+        self.fact_1.update_troops_after_moves()
+        self.fact_1.execute_orders()
+        self.fact_1.solve_battle()
 
         self.assertEqual(self.fact_1.owner, FRIEND)
         self.assertEqual(self.fact_1.stock, 6)
@@ -125,9 +142,11 @@ class TestFactory(unittest.TestCase):
     def test_solve_turn_friend_attacked_stay_friend(self):
         self.set_up()
         self.fact_1.orders.append(Order(Order.MOVE, self.fact_1, self.fact_2, 4))
-        troop = Troop(10, 1, 0, -1, False, self.link_3_2, self.fact_3, self.fact_1)
+        troop = Troop(10, 1, 0, -1, False, self.link_1_3, self.fact_3, self.fact_1)
         self.set_troops([troop])
-        self.fact_1.solve_turn()
+        self.fact_1.update_troops_after_moves()
+        self.fact_1.execute_orders()
+        self.fact_1.solve_battle()
 
         self.assertEqual(self.fact_1.owner, FRIEND)
         self.assertEqual(self.fact_1.stock, 2)
@@ -138,7 +157,9 @@ class TestFactory(unittest.TestCase):
         self.fact_1.orders.append(Order(Order.MOVE, self.fact_1, self.fact_2, 4))
         troop = Troop(10, 4, 0, -1, False, self.link_3_2, self.fact_3, self.fact_1)
         self.set_troops([troop])
-        self.fact_1.solve_turn()
+        self.fact_1.update_troops_after_moves()
+        self.fact_1.execute_orders()
+        self.fact_1.solve_battle()
 
         self.assertEqual(self.fact_1.owner, ENNEMY)
         self.assertEqual(self.fact_1.stock, 1)
@@ -154,7 +175,9 @@ class TestFactory(unittest.TestCase):
         troop2 = Troop(11, 2, 0, 1, False, self.link_3_2, self.fact_3, self.fact_1)
         self.set_troops([troop1, troop2])
 
-        self.fact_1.solve_turn()
+        self.fact_1.update_troops_after_moves()
+        self.fact_1.execute_orders()
+        self.fact_1.solve_battle()
 
         self.assertEqual(self.fact_1.owner, FRIEND)
         self.assertEqual(self.fact_1.stock, 1)
@@ -180,15 +203,18 @@ class TestFactory(unittest.TestCase):
         self.fact_1.stock = 13
         self.fact_1.orders.append(Order(Order.INC, self.fact_1, self.fact_2, 10))
         self.fact_1.orders.append(Order(Order.MOVE, self.fact_1, self.fact_2, 3))
-        troop = Troop(10, 2, 0, -1, False, self.link_3_2, self.fact_3, self.fact_1)
+        troop = Troop(10, 2, 0, -1, False, self.link_1_3, self.fact_3, self.fact_1)
         self.set_troops([troop])
-        self.fact_1.solve_turn()
+
+        self.fact_1.update_troops_after_moves()
+        self.fact_1.execute_orders()
+        self.fact_1.solve_battle()
 
         self.assertEqual(self.fact_1.owner, FRIEND)
         self.assertEqual(self.fact_1.stock, 1)
         self.assertEqual(self.fact_1.current_production, 3)
         self.assertEqual(self.fact_1.production, 3)
-        self.assertEqual(self.fact_1.count_zero_prod, -1)
+        self.assertEqual(self.fact_1.count_zero_prod, 0)
 
     def test_solve_turn_friend_increased_bombed_attacked_become_ennemy(self):
         self.set_up()
