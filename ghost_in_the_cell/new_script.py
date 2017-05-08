@@ -1,10 +1,185 @@
 import sys
-
-from Game import Game
-from Order import Order
-from Configuration import *
-from Path import Path
+import math
 from operator import attrgetter
+
+FRIEND = 1
+PLAYER = 1
+ENNEMY = -1
+NEUTRAL = 0
+NEUTRAL_2 = 2
+
+NB_CYBORG_INC = 10
+DELTA_CONQUER = 1
+FIRST_EXPLORATION_DELTA = 5
+
+MAX_BOMB_DISTANCE = 5
+MIN_DEFENSE_TO_SEND_BOMB = 5
+
+COUNT_INCREASE = 0
+
+MIN_FACTORY_CONSIDERED = 6
+MAX_DISTANCE_CONSIDERED = 4
+NB_PREDICTED_TURN = 3
+NB_PREDICTED_TURN_BOMB = 5
+
+NB_SIMU_TURN = 1
+
+class Troop:
+    def __init__(self, t_id, number, eta, owner, is_bomb, link, sender, destination):
+        self.t_id = t_id
+        self.number = number
+        self.eta = eta
+        self.owner = owner
+        self.is_bomb = is_bomb
+        self.link = link
+        self.origin = sender
+        self.destination = destination
+
+
+class Path:
+    '''
+    Class managing alternatives ways to go from an origin to a destination with the same time of travel
+    '''
+
+    def __init__(self, origin, intermediate, destination):
+        self.origin = origin
+        self.destination = destination
+        self.intermediate = intermediate
+        self.conquest_priority = 0
+
+    def define_conquest_priority(self):
+        self.conquest_priority = self.origin.links[self.intermediate.f_id].conquest_priority[self.origin.f_id] + self.intermediate.links[self.destination.f_id].conquest_priority[self.intermediate.f_id]
+
+
+class Order:
+    '''
+    Manage orders expressed by the factories
+    '''
+
+    MOVE = 0
+    INC = 1
+    BOMB = 2
+    WAIT = 3
+
+    def __init__(self, action, origin, destination, number):
+        self.type = action
+        self.number = number
+        self.origin = origin
+        self.destination = destination
+
+    def to_str(self):
+        '''
+        Translate the order into string
+        :return: translated message
+        '''
+        if self.type == Order.MOVE:
+            msg = 'MOVE ' + str(self.origin.f_id) + ' ' + str(self.destination.f_id) + ' ' + str(self.number)
+        elif self.type == Order.INC:
+            msg = 'INC ' + str(self.origin.f_id)
+        elif self.type == Order.BOMB:
+            msg = 'BOMB ' + str(self.origin.f_id) + ' ' + str(self.destination.f_id)
+        else :
+            msg = 'WAIT'
+
+        return msg
+
+
+class Link:
+    def __init__(self, l_id, fact_1, fact_2, distance):
+        self.l_id = l_id
+        self.distance = distance
+
+        # Troops going towards the factory set as key
+        self.troops = {}
+        self.troops[fact_1.f_id] = []
+        self.troops[fact_2.f_id] = []
+
+        # Other factory at the end of link
+        self.destination = {}
+        self.destination[fact_1.f_id] = fact_2
+        self.destination[fact_2.f_id] = fact_1
+
+    def get_friendly_troops_for_battle(self, factory):
+        '''
+        Return the number of friendly troops for the factory ready to engage in a battle
+        friendly troop = troops with the same owner as the factory
+        except for neutral factory, friendly troops are the troop of the player
+        :param factory: factory considered
+        :return: number of troops
+        '''
+
+        if factory.owner != 0:
+            match_troops = [troop for troop in self.troops[factory.f_id] if troop.eta == 0 and troop.owner == factory.owner]
+        else:
+            match_troops = [troop for troop in self.troops[factory.f_id] if troop.eta == 0 and troop.owner == FRIEND]
+
+        if len(match_troops) == 0:
+            return 0
+        else:
+            return sum(troop.number for troop in match_troops)
+
+    def get_ennemy_troops_for_battle(self, factory):
+        '''
+        Return the number of ennemy troops for the factory ready to engage in a battle
+        Ennemy troop = troops with a different owner of the factory
+        Except for neutral factory, ennemy troops are the troop of the "ennemy"
+        :param factory: factory considered
+        :return: number of troops
+        '''
+
+        if factory.owner != 0:
+            match_troops = [troop for troop in self.troops[factory.f_id] if troop.eta == 0 and troop.owner != factory.owner]
+        else:
+            match_troops = [troop for troop in self.troops[factory.f_id] if troop.eta == 0 and troop.owner == ENNEMY]
+
+        if len(match_troops) == 0:
+            return 0
+        else:
+            return sum(troop.number for troop in match_troops)
+
+    def get_bomb_eta(self, factory):
+        '''
+        Return the bomb eta for the factory if a bomb is placed on the link
+        :param factory: factory considered
+        :return: eta of the closest bomb or -1
+        '''
+
+        match_troops = [troop for troop in self.troops[factory.f_id] if troop.is_bomb]
+
+        if len(match_troops) != 0:
+            match_troops.sort(key=getattr('eta'))
+            return match_troops[0]
+        else:
+            return -1
+
+    def move_troops(self):
+        '''
+        Move all the troops along the link (reduce ETA of 1)
+        Troops with an ETA of 0 are deleted
+        '''
+
+        for factory_troops in self.troops.values():
+            i = 0
+            while i < len(factory_troops):
+                if factory_troops[i].eta > 0:
+                    factory_troops[i].eta -= 1
+                    i += 1
+                else:
+                    del factory_troops[i]
+
+
+    def add_troops(self, origin, destination, number, is_bomb, game):
+        '''
+        Create and add new troops on the link
+        :param origin: factory creating the troops
+        :param destination: factory destination of the troops
+        :param number: number of the troops
+        :param is_bomb: the troop is a bomb
+        '''
+
+        troop = Troop(game.next_id_troop(), number, self.distance, origin.owner, is_bomb, self, origin, destination)
+        self.troops[destination.f_id].append(troop)
+        game.troops.append(troop)
 
 class Factory:
     def __init__(self, f_id):
@@ -140,7 +315,6 @@ class Factory:
         self.min_friend_distance = 20
         self.max_ennemy_distance = 0
         self.min_ennemy_distance = 20
-        self.set_distances()
 
     def reset_orders(self):
         self.orders.clear()
@@ -518,3 +692,287 @@ class Factory:
                 self.links[order.destination.f_id].add_troops(self, order.destination, 0, True,game)
 
         self.orders.clear()
+
+
+class Game:
+    '''
+    Manage all the global states of the game
+    '''
+
+
+    def __init__(self):
+        self.factories = []
+        self.factories_owned = []
+        self.factories_ennemy = []
+        self.factories_targeted = []
+
+        self.links = []
+
+        self.troops = []
+        self.troops_owned = []
+        self.troops_ennemy = []
+
+        self.ennemy_bombs = [None, None]
+        self.ennemy_bomb = False  # True if an ennemy bomb is currently moving
+        self.available_bomb = 2
+
+        self.ennemy_bomb_checked = [] #id of ennemy bomb checked during new input
+
+        self.turn = 1
+
+    def initialize_game(self, factory_count, link_count):
+        '''
+        Initialize the game at the beginning of the party
+        :return:
+        '''
+
+        self.factory_count = factory_count
+        self.link_count = link_count # the number of links between factories
+        self.turn = 1
+
+    def create_factories(self):
+        for i in range(self.factory_count):
+            self.factories.append(Factory(i))
+
+    def add_link(self, factory_1, factory_2, distance):
+        link = Link(i, self.factories[factory_1], self.factories[factory_2], distance)
+        self.factories[factory_1].links[factory_2] = link
+        self.factories[factory_2].links[factory_1] = link
+        self.links.append(link)
+
+    def reset(self):
+        '''
+        Rest the state of the game before getting the information of the new turn
+        '''
+        self.factories_owned.clear()
+        self.factories_ennemy.clear()
+        self.factories_targeted.clear()
+
+        for factory in self.factories:
+            factory.decrease_bombs()
+            factory.restore_productivity()
+            factory.reset_distances()
+            factory.reset_orders()
+
+    def initialize_factories(self):
+        '''
+        Initialize the state of the factories
+        '''
+
+        for factory in self.factories:
+            factory.set_distances()
+            factory.build_path()
+
+    def process_input(self, entity_id, entity_type, arg_1, arg_2, arg_3, arg_4, arg_5):
+        '''
+        Manage the input from the game engine
+        see documentation for arguments
+        '''
+
+        if entity_type == 'FACTORY':
+            factory = self.factories[entity_id]
+            factory.set_owner(arg_1)
+            factory.stock = arg_2
+            factory.set_production(arg_3, arg_4)
+
+            if factory.owner == 1:
+                self.factories_owned.append(factory)
+            elif factory.owner == -1:
+                self.factories_ennemy.append(factory)
+
+        elif entity_type == 'TROOP':
+
+            factory_origin = self.factories[arg_2]
+            factory_destination = self.factories[arg_3]
+
+            match_troop = [troop for troop in self.troops if troop.t_id == entity_id]
+            if len(match_troop) == 0:
+                new_troop = Troop(entity_id, arg_4, arg_5, arg_1, False, factory_origin.links[arg_3], factory_origin, factory_destination)
+
+                self.troops.append(new_troop)
+                factory_origin.sent_troops(arg_3, new_troop)
+
+                if arg_1 == -1:
+                    self.troops_ennemy.append(new_troop)
+                else:  # same for player and neutral structure
+                    self.troops_owned.append(new_troop)
+
+            else:
+                match_troop[0].eta = arg_5
+
+        elif entity_type == 'BOMB':
+
+            factory_origin = self.factories[arg_2]
+            match_troop = [troop for troop in self.troops if troop.t_id == entity_id]
+
+            if len(match_troop) == 0:
+                if arg_1 == ENNEMY:
+                    factory_destination = self.estimate_target(self.factories[arg_2])
+                    link = factory_origin.links[factory_destination.f_id]
+                else:
+                    factory_destination = self.factories[arg_3]
+                    link = factory_origin.links[arg_3]
+
+                new_troop = Troop(entity_id, arg_4, arg_5, arg_1, True, link, factory_origin, factory_destination)
+
+                self.troops.append(new_troop)
+
+                if arg_1 == -1:
+                    self.troops_ennemy.append(new_troop)
+                else:  # same for player and neutral structure
+                    self.troops_owned.append(new_troop)
+            else:
+                if arg_1 == ENNEMY:
+                    match_troop[0].eta -= 1
+                else:
+                    match_troop[0].eta = arg_4
+
+    def estimate_target(self, origin):
+        '''
+        Choose the possible target of the ennemy bomb and set the bomb eta accordingly
+        '''
+
+        if self.turn == 1:
+            target = self.factories_owned[0]
+            eta = origin.links[target.f_id].distance - 1
+        else:
+            temp = sorted(self.factories_owned, key=lambda factory: (-factory.bomb_eta, -factory.production, -factory.stock, origin.links[factory.f_id].distance))
+            target = temp[0]
+            eta = origin.links[target.f_id].distance - 1
+
+        target.set_bomb_eta(eta)
+        return target
+
+    def check_ennemy_bombs(self):
+        '''
+        Update the ennemy bombs on their potential target
+        '''
+        for target in self.ennemy_bombs:
+            if target is not None and target.bomb_eta == -1:
+                target = None
+
+    def send_bomb_order(self, link, fact_destination):
+        '''
+        Manage to send a bomb if possible
+        '''
+
+        #TODO: manage bomb function of the global state of the game
+        '''
+        nb_cyborg_player = self.nb_friendly_troops
+        nb_cyborg_ennemy = self.nb_ennemy_troops
+
+        estimated_stock = fact_destination.get_estimated_stock(NB_PREDICTED_TURN_BOMB - self.count_zero_prod)
+
+        evaluated_defense = nb_cyborg_ennemy + estimated_stock
+        nb_defense_left = evaluated_defense - nb_cyborg_player
+
+        return fact_destination.owner == -1 and link.distance <= MAX_BOMB_DISTANCE and nb_defense_left >= MIN_DEFENSE_TO_SEND_BOMB and (
+        fact_destination.current_production >= 2 \
+        or len(Game.factories_ennemy) == 1) and fact_destination.bomb_eta == -1 and Game.available_bomb != 0
+        '''
+        pass
+
+    def send_orders_to_engine(self):
+        msg = ''
+        for factory in self.factories_owned:
+            msg += factory.generate_message_orders()
+
+        if len(self.factories_owned) > 0 :
+            return msg[:-1]
+        else:
+            return 'WAIT'
+
+    def simulate_turn(self):
+        '''
+        Simulate one full turn for all the factories
+        1) Move existing troops and bombs
+        2) Execute user orders
+        3) Produce new cyborgs in all factories
+        4) Solve battles
+        5) Make the bombs explode
+        6) Check end conditions
+        '''
+
+        #1) Move existing troops and bombs
+        for link in self.links:
+            link.move_troops()
+
+        #2) Execute user orders
+        #3) Produce new cyborgs in all factories
+        #4) Solve battles
+        #5) Make the bombs explode
+        for factory in self.factories:
+            factory.update_troops_after_moves()
+            factory.solve_turn(self)
+
+        #6) Check end conditions
+        #TODO ?
+
+        self.turn += 1
+
+    def consolidate_inputs (self):
+        for factory in self.factories:
+            factory.set_distances()
+
+    def solve_turn(self, simulated_game):
+        for factory in self.factories_owned:
+            factory.update_troops_after_moves()
+            factory.emit_orders(simulated_game)
+
+        #TODO : Post treatment to manage launching bombs
+        #TODO : Post treatment to optimize orders
+
+        print(self.send_orders_to_engine())
+        self.turn += 1
+
+    def next_id_troop(self):
+        if len(self.troops) == 0:
+            return 0
+        else:
+            return max(troop.t_id for troop in self.troops) + 1
+
+factory_count = int(input())  # the number of factories
+link_count = int(input())  # the number of links between factories
+
+game = Game()
+simu = Game()
+
+game.initialize_game(factory_count, link_count)
+simu.initialize_game(factory_count, link_count)
+
+game.create_factories()
+simu.create_factories()
+
+for i in range(link_count):
+    factory_1, factory_2, distance = [int(j) for j in input().split()]
+    game.add_link(factory_1, factory_2, distance)
+    simu.add_link(factory_1, factory_2, distance)
+
+game.initialize_factories()
+simu.initialize_factories()
+
+# game loop
+while True:
+    game.reset()
+    simu.reset()
+
+    entity_count = int(input())  # the number of entities (e.g. factories and troops)
+    for i in range(entity_count):
+        entity_id, entity_type, arg_1, arg_2, arg_3, arg_4, arg_5 = input().split()
+        entity_id = int(entity_id)
+        arg_1 = int(arg_1)
+        arg_2 = int(arg_2)
+        arg_3 = int(arg_3)
+        arg_4 = int(arg_4)
+        arg_5 = int(arg_5)
+
+        game.process_input(entity_id, entity_type, arg_1, arg_2, arg_3, arg_4, arg_5)
+        simu.process_input(entity_id, entity_type, arg_1, arg_2, arg_3, arg_4, arg_5)
+
+    game.consolidate_inputs()
+    simu.consolidate_inputs()
+
+    for i in range(NB_SIMU_TURN):
+        simu.simulate_turn()
+
+    game.solve_turn(simu)

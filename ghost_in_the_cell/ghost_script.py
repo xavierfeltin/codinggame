@@ -590,16 +590,15 @@ class Link:
         self.conquest_priority[fact_1.f_id] = 0  # self.define_conquest_priority(fact_1)
         self.conquest_priority[fact_2.f_id] = 0  # self.define_conquest_priority(fact_2)
 
-    def define_conquest_priorities(self):
+    def define_conquest_priorities(self, simu = None):
         '''
         Update the priorities for each factory on the link
         '''
 
         for key in self.conquest_priority.keys():
-            fact_origin = factories[key]
-            self.conquest_priority[key] = self.define_conquest_priority(fact_origin)
+            self.conquest_priority[key] = self.define_conquest_priority(simu)
 
-    def define_conquest_priority(self, origin):
+    def define_conquest_priority(self, simu = None):
         '''
         Compute the priority for the factory set as origin
         to conquer the factory at the other side of the link
@@ -607,49 +606,47 @@ class Link:
         - The factory is not owned > ennemy > owned
         - Higher factory production is the better
         - Closer the factory is the better
-        @param origin : factory from where the cyborgs are emitted from
         '''
 
-        factory_destination = self.destination[origin.f_id]
+        if simu is None:
+            factory_destination = self.destination[self.f_id]
+        else:
+            factory_destination = simu.factories[self.destination[self.f_id].f_id]
 
-        sim_dest = origin.solver(factory_destination)
-        sim_origin = origin.solver(origin)
+        nb_cyborg_ennemies = factory_destination.nb_ennemy_cyborgs
+        nb_cyborg_friends = factory_destination.nb_friend_cyborgs
 
-        estimated_distance = min(self.distance + 1, 20)
-        nb_cyborg_ennemies = factory_destination.cyborgs_coming[ENNEMY][0]
-        nb_cyborg_friends = factory_destination.cyborgs_coming[FRIEND][0]
+        estimated_stock = factory_destination.stock
 
-        estimated_stock = sim_dest.stock
-
-        if sim_dest.owner == 1 and nb_cyborg_ennemies > (estimated_stock + nb_cyborg_friends):  # and self.distance < (origin.min_friend_distance + FIRST_EXPLORATION_DELTA)
+        if factory_destination.owner == 1 and nb_cyborg_ennemies > (estimated_stock + nb_cyborg_friends):  # and self.distance < (origin.min_friend_distance + FIRST_EXPLORATION_DELTA)
             # R2 : help your neighbor
             priority = 10 * 1000
             priority += (20 - self.distance) * 10
-            priority += sim_dest.production
+            priority += factory_destination.production
             priority += nb_cyborg_ennemies
 
-        elif sim_dest.owner == 0 and sim_dest.min_friend_distance < sim_dest.min_ennemy_distance:  # and factory_destination.production > 0
+        elif factory_destination.owner == 0 and factory_destination.min_friend_distance < factory_destination.min_ennemy_distance:  # and factory_destination.production > 0
             # R1 : expand around you on factories of interest
             priority = 9 * 1000
             # priority += factory_destination.production * 100
             # priority -= (origin.stock - factory_destination.stock) #Smaller the difference of stock, best it is
-            priority += sim_dest.production * 10
-            priority += len(sim_origin.alternative_pathes[factory_destination.f_id]) * 100
+            priority += factory_destination.production * 10
+            priority += len(self.alternative_pathes[factory_destination.f_id]) * 100
             priority += 20 - self.distance
 
-        elif factory_destination.owner == 1 and sim_dest.production <= 1 and estimated_stock <= 10:
+        elif factory_destination.owner == 1 and factory_destination.production <= 1 and estimated_stock <= 10:
             # R3 : increase the capacity of your neighbor
             priority = 8 * 1000
             priority += (20 - self.distance) * 10
-            priority += 3 - sim_dest.production
+            priority += 3 - factory_destination.production
 
-        elif sim_dest.owner == -1 and ((sim_dest.bomb_eta != 0 and self.distance == (sim_dest.bomb_eta + 1)) or (sim_dest.count_zero_prod - 1 == self.distance)):
+        elif factory_destination.owner == -1 and ((factory_destination.bomb_eta != 0 and self.distance == (factory_destination.bomb_eta + 1)) or (factory_destination.count_zero_prod - 1 == self.distance)):
             # R4 : attack your close opponent where he is bombed
             priority = 7 * 1000
-            priority += (20 - sim_dest.bomb_eta * 10)
-            priority += (5 - sim_dest.count_zero_prod * 10)
-            priority += sim_dest.production
-        elif sim_dest.owner == -1 and (estimated_stock + nb_cyborg_friends - nb_cyborg_ennemies) < 20 and self.distance < (sim_origin.min_ennemy_distance + FIRST_EXPLORATION_DELTA) and factory_destination.current_production >= 1:
+            priority += (20 - factory_destination.bomb_eta * 10)
+            priority += (5 - factory_destination.count_zero_prod * 10)
+            priority += factory_destination.production
+        elif factory_destination.owner == -1 and (estimated_stock + nb_cyborg_friends - nb_cyborg_ennemies) < 20 and self.distance < (self.min_ennemy_distance + FIRST_EXPLORATION_DELTA) and factory_destination.current_production >= 1:
             # R5 : attack your close opponent where he is weak
             priority = 6 * 1000
             # priority += (20 - self.distance) * 100
@@ -657,95 +654,26 @@ class Link:
             priority -= estimated_stock + nb_cyborg_friends
             priority += nb_cyborg_ennemies
 
-        elif sim_dest.owner == 0 and sim_dest.production > 0:
+        elif factory_destination.owner == 0 and factory_destination.production > 0:
             # R6 : expand
             priority = 5 * 1000
-            priority += sim_dest.production * 10 - sim_dest.stock
+            priority += factory_destination.production * 10 - factory_destination.stock
             priority += 20 - self.distance
-        elif sim_dest.owner == -1 and nb_cyborg_friends < 20:
+        elif factory_destination.owner == -1 and nb_cyborg_friends < 20:
             # R7 : attack your ennemy where is weak
             priority = 4 * 1000
             priority += (20 - self.distance) * 10
-        elif sim_dest == 1:
+        elif factory_destination == 1:
             # R8 :defense
             priority = 3 * 1000
-            priority += 100 - sim_dest.stock
-        elif sim_dest.owner == 0:
+            priority += 100 - factory_destination.stock
+        elif factory_destination.owner == 0:
             priority = 2 * 1000
         else:
             # R9 :attack
             priority = 1 * 1000
             priority += (20 - self.distance) * 10
-            priority += (3 - sim_dest.current_production)
-
-        '''
-        estimated_distance = min(self.distance+1, 20)
-
-        #nb_cyborg_ennemies = sum(factory_destination.cyborgs_coming[ENNEMY][0:self.distance])
-        #nb_cyborg_friends = sum(factory_destination.cyborgs_coming[FRIEND][0:self.distance])
-
-        nb_cyborg_ennemies = sum(factory_destination.cyborgs_coming[ENNEMY][estimated_distance:NB_PREDICTED_TURN])
-        nb_cyborg_friends = sum(factory_destination.cyborgs_coming[FRIEND][estimated_distance:NB_PREDICTED_TURN])
-
-        estimated_stock = factory_destination.get_estimated_stock(self.distance - factory_destination.count_zero_prod)
-
-        if factory_destination.owner == 1 and nb_cyborg_ennemies  > (estimated_stock + nb_cyborg_friends) : #and self.distance < (origin.min_friend_distance + FIRST_EXPLORATION_DELTA)
-            #R2 : help your neighbor
-            priority = 10 * 1000
-            priority += (20 - self.distance) * 10
-            priority += factory_destination.production
-            priority += nb_cyborg_ennemies
-
-        elif factory_destination.owner == 0 and factory_destination.min_friend_distance < factory_destination.min_ennemy_distance : #and factory_destination.production > 0
-            #R1 : expand around you on factories of interest
-            priority = 9 * 1000
-            #priority += factory_destination.production * 100
-            #priority -= (origin.stock - factory_destination.stock) #Smaller the difference of stock, best it is
-            priority += factory_destination.production * 10
-            priority += len(origin.alternative_pathes[factory_destination.f_id]) * 100
-            priority += 20 - self.distance
-
-        elif factory_destination.owner == 1  and factory_destination.production <= 1 and estimated_stock <= 10:
-            #R3 : increase the capacity of your neighbor
-            priority = 8 * 1000
-            priority += (20 - self.distance) * 10
-            priority += 3 - factory_destination.production
-
-        elif factory_destination.owner == -1 and ((factory_destination.bomb_eta != 0 and self.distance == (factory_destination.bomb_eta+1)) or (factory_destination.count_zero_prod-1 == self.distance)) :
-            #R4 : attack your close opponent where he is bombed
-            priority = 7 * 1000
-            priority += (20-factory_destination.bomb_eta * 10)
-            priority += (5-factory_destination.count_zero_prod * 10)
-            priority += factory_destination.production
-        elif factory_destination.owner == -1 and (estimated_stock + nb_cyborg_friends - nb_cyborg_ennemies)  < 20 and self.distance < (origin.min_ennemy_distance + FIRST_EXPLORATION_DELTA) and factory_destination.current_production >= 1 :
-            #R5 : attack your close opponent where he is weak
-            priority = 6 * 1000
-            #priority += (20 - self.distance) * 100
-            #priority += (3-factory_destination.current_production) * 10 - factory_destination.stock
-            priority -= estimated_stock + nb_cyborg_friends
-            priority += nb_cyborg_ennemies
-
-        elif factory_destination.owner == 0 and factory_destination.production > 0 :
-            #R6 : expand
-            priority = 5 * 1000
-            priority += factory_destination.production * 10 - factory_destination.stock
-            priority += 20 - self.distance
-        elif factory_destination.owner == -1 and nb_cyborg_friends < 20:
-            #R7 : attack your ennemy where is weak
-            priority = 4 * 1000
-            priority += (20 - self.distance) * 10
-        elif factory_destination == 1:
-            #R8 :defense
-            priority = 3 * 1000
-            priority += 100 - factory_destination.stock
-        elif factory_destination.owner == 0 :
-            priority = 2 * 1000
-        else:
-            #R9 :attack
-            priority = 1 * 1000
-            priority += (20 - self.distance) * 10
-            priority += (3-factory_destination.current_production)
-        '''
+            priority += (3 - factory_destination.current_production)
 
         return priority
 

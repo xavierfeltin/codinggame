@@ -25,7 +25,7 @@ class Order:
             msg = 'INC ' + str(self.origin.f_id)
         elif self.type == Order.BOMB:
             msg = 'BOMB ' + str(self.origin.f_id) + ' ' + str(self.destination.f_id)
-        else :
+        else:
             msg = 'WAIT'
 
         return msg

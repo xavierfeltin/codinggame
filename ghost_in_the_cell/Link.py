@@ -97,5 +97,5 @@ class Link:
         :param is_bomb: the troop is a bomb
         '''
 
-        troop = Troop(Game.real.next_id_troop(), number, self.distance, origin.owner, is_bomb, self, origin, destination)
+        troop = Troop(1000, number, self.distance, origin.owner, is_bomb, self, origin, destination)
         self.troops[destination.f_id].append(troop)
