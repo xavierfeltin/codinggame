@@ -616,8 +616,8 @@ class Factory:
         else:
             self_factory = simu.factories[self.f_id]
 
-        if self.bomb_eta == 1:
-            keep_troops = 0
+        if self.bomb_eta >= 1:
+            return 0
             
             #If after the bomb, the factory has the possibility to resist some cyborgs coming just after
             #keep the stock to avoid losing the factory
@@ -647,7 +647,7 @@ class Factory:
                 else:
                     break
                 
-        return min(max(keep_troops, self_factory.delta), self.stock)
+            return min(max(keep_troops, self_factory.delta), self.stock)
 
     def emit_orders(self, simu=None):
         '''
@@ -865,13 +865,23 @@ class Factory:
             priority += simu_destination.min_ennemy_distance
             selected_priorities.append(priority)
 
-        if simu_destination.owner == FRIEND and (
-                self.production > simu_destination.production or self.bomb_eta == 1) and simu_destination.production <= 1 and simu_destination.nb_ennemy_troops == 0:
+        if simu_destination.owner == FRIEND \
+        and (self.production > simu_destination.production or self.bomb_eta >= 1) \
+        and (simu_destination.bomb_eta <= 0) \
+        and simu_destination.production <= 1 and simu_destination.nb_ennemy_troops == 0:
             # R4 : help your neighbor to increase production to level 2
 
             priority = priorities[3] * 1000
-            priority += (1-simu_destination.production) * 100
-            priority += simu_destination.min_ennemy_distance
+            
+            #old config
+            #priority += (1-simu_destination.production) * 100
+            #priority += simu_destination.min_ennemy_distance
+            
+            #new_config - #Try to finish the closest one first to the next level of production first
+            priority += simu_destination.production * 10
+            priority += simu_destination.stock
+            priority += simu_destination.nb_friendly_troops
+            
             selected_priorities.append(priority)
 
         if simu_destination.owner == NEUTRAL:
@@ -885,7 +895,7 @@ class Factory:
             priority -= simu_destination.stock
             priority -= simu_destination.nb_ennemy_troops * 10
             
-            priority += int(simu_destination.is_central) * 100
+            priority += int(simu_destination.is_central) * 50
             
             #close_other_factories = [link for key, link in simu_destination.links.items() if link.distance <= 2 and simu.factories[key].owner != FRIEND]
             #priority -= len(close_other_factories)
@@ -1144,7 +1154,7 @@ class Game:
                     
                     #factory_destination = self.estimate_target(factory_origin)
                     simu_factory_origin = temp_simu.factories[factory_origin.f_id]
-                    simu_factory_destination = temp_simu.estimate_target(simu_factory_origin)
+                    simu_factory_destination = temp_simu.estimate_target(factory_origin, self)
                     factory_destination = self.factories[simu_factory_destination.f_id]
                     
                     link = factory_origin.links[factory_destination.f_id]
@@ -1176,18 +1186,24 @@ class Game:
                 else:
                     match_troop[0].eta = arg_4
 
-    def estimate_target(self, origin):
+    def estimate_target(self, origin, game):
         '''
         Choose the possible target of the ennemy bomb and set the bomb eta accordingly
         '''
         
-        factories_except_origin = [factory for factory in self.factories_owned if factory.f_id != origin.f_id]
-
-        if self.game_turn == 1:
-            #target = self.factories_owned[0]
+        if self.game_turn == 2: #Turn 1, orders are emitted so the target is decided on turn 2
+            factories_except_origin = [factory for factory in game.factories_owned if factory.f_id != origin.f_id]
+            
             target = factories_except_origin[0]
             eta = origin.links[target.f_id].distance - 1
         else:
+            present_facto_bombed = [factory for factory in game.factories_owned if factory.bomb_eta >= origin.links[factory.f_id].distance]
+            
+            if len(present_facto_bombed) == 1:
+                factories_except_origin = [factory for factory in self.factories_owned if factory.f_id != origin.f_id and factory.f_id != present_facto_bombed[0].f_id]
+            else:
+                factories_except_origin = [factory for factory in self.factories_owned if factory.f_id != origin.f_id]
+                
             temp = sorted(factories_except_origin, key=lambda factory: (factory.bomb_eta, -factory.production, -factory.stock, factory.nb_ennemy_troops))
             target = temp[0]
 
