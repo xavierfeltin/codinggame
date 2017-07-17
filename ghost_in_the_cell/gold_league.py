@@ -467,9 +467,9 @@ class Factory:
 
         if current_owner != NEUTRAL:
             new_stock = self.stock + self.nb_friendly_troops - self.nb_ennemy_troops
-        else:
+        else:                            
             new_stock = self.stock - abs(self.nb_friendly_troops - self.nb_ennemy_troops)
-
+                        
         if current_owner == FRIEND and new_stock < 0:
             self.owner = ENNEMY
         elif current_owner == ENNEMY and new_stock < 0:
@@ -480,7 +480,7 @@ class Factory:
             else:
                 self.owner = ENNEMY
         # else the factory is still neutral
-
+                
         self.stock = abs(new_stock)  # stock is always positive (negative is positive for new owner)
 
         if self.owner != NEUTRAL:
@@ -534,7 +534,6 @@ class Factory:
         elif self_factory.owner == ENNEMY:
             #Compute to take the factory from the ennemies after the simulation period
             self.need_turn = self_factory.stock + self_factory.current_production + self_factory.nb_friendly_troops + DELTA_CONQUER - self.nb_ennemy_troops
-
         else:
             #Compute to take the neutral factory and do some possible increase
             self.need_turn = self_factory.stock - self_factory.nb_friendly_troops + self_factory.nb_ennemy_troops + DELTA_CONQUER            
@@ -588,8 +587,7 @@ class Factory:
 
         is_danger_situation = is_danger_situation or self.bomb_eta == 1
 
-        close_link_ennemies = [link for link in self.links.values() if
-                               link.destination[self.f_id].owner == ENNEMY and link.distance < MAX_DISTANCE_CONSIDERED]
+        close_link_ennemies = [link for link in self.links.values() if link.destination[self.f_id].owner == ENNEMY and link.distance < MAX_DISTANCE_CONSIDERED]        
         ennemy_stock = 0
         for link in close_link_ennemies:
             ennemy_stock += link.destination[self.f_id].stock
@@ -618,8 +616,8 @@ class Factory:
         else:
             self_factory = simu.factories[self.f_id]
 
-        if self.bomb_eta == 1:
-            keep_troops = 0
+        if self.bomb_eta >= 1:
+            return 0
             
             #If after the bomb, the factory has the possibility to resist some cyborgs coming just after
             #keep the stock to avoid losing the factory
@@ -634,9 +632,6 @@ class Factory:
         else:
             keep_troops = self_factory.delta
             
-            if self.f_id == 3:
-                print('keep = ' + str(keep_troops), file=sys.stderr)
-            
             link_friends = [link for link in self_factory.links.values() if link.destination[self.f_id].owner == FRIEND]
             if self.production < 3:
                 if ((self.production == 0 and len(link_friends) > 0) or (self.production < 3)) and not is_danger_situation:                    
@@ -645,17 +640,14 @@ class Factory:
            
             sorted_priorities = OrderedDict(sorted(self.priorities.items(), key=itemgetter(1), reverse=True))
             for f_id, priority in sorted_priorities.items():
-                if priority >= 11000 and (keep_troops - self.delta) > 0 and self.links[f_id].distance <= MAX_DISTANCE_CONSIDERED:
+                if priority >= 11000 and (keep_troops - self_factory.delta) > 0 and self.links[f_id].distance <= MAX_DISTANCE_CONSIDERED:                
                     #keep_troops -= min(self.links[f_id].destination[self.f_id].need_turn, self.delta)
                     keep_troops -= self.links[f_id].destination[self.f_id].need_turn
-                    keep_troops = max(keep_troops, self_factory.delta)
-                    
-                    if self.f_id == 3:
-                        print('keep = ' + str(keep_troops), file=sys.stderr)
+                    keep_troops = max(keep_troops, self_factory.delta)                                        
                 else:
                     break
                 
-        return min(max(keep_troops, self_factory.delta), self.stock)
+            return min(max(keep_troops, self_factory.delta), self.stock)
 
     def emit_orders(self, simu=None):
         '''
@@ -688,41 +680,47 @@ class Factory:
                 link = self_factory.links[prio_factory_id]
                 fact_destination = link.destination[self.f_id]
     
-                if fact_destination.need_turn == 0 and fact_destination.owner == NEUTRAL:
-                    send_troops = 1
-                else:
-                    send_troops = fact_destination.need_turn
+                #if fact_destination.need_turn == 0 and fact_destination.owner == NEUTRAL:
+                #    send_troops = 1
+                #else:
+                #    send_troops = fact_destination.need_turn
+                send_troops = fact_destination.need_turn
                                 
                 send_troops = min(send_troops, self.sendable_troops)                    
                                 
-                fact_destination.need_turn -= send_troops
-                fact_destination.need_turn = max(fact_destination.need_turn, 0)
+                ##XF fact_destination.need_turn -= send_troops
+                ##XF fact_destination.need_turn = max(fact_destination.need_turn, 0)
                 self.sendable_troops -= send_troops
-                                                        
-                if True: #and priority < 12000:
-                                                                
-                    destination = self_factory.get_intermediate(link, fact_destination)                    
-                    if destination.need_turn == 0 and destination.owner == NEUTRAL:
-                        intermediate_send_troops = 1
-                    elif destination.need_turn > 0:
-                        intermediate_send_troops = max(min(destination.need_turn, self.sendable_troops - send_troops), 0)
-                    else:
-                        intermediate_send_troops = 0
+                                                                                                                                    
+                destination = self_factory.get_intermediate(link, fact_destination) 
+                
+                if destination.f_id != fact_destination.f_id:
+                    #if destination.need_turn == 0 and destination.owner == NEUTRAL:
+                    #    intermediate_send_troops = 1
+                    #elif destination.need_turn > 0:
+                    #    intermediate_send_troops = max(min(destination.need_turn, self.sendable_troops - send_troops), 0)
+                    #else:
+                    #    intermediate_send_troops = 0
+                    intermediate_send_troops = max(min(destination.need_turn, self.sendable_troops - send_troops), 0)    
+                        
                         
                     intermediate_send_troops = min(intermediate_send_troops, self.sendable_troops)                    
+                    
                     destination.need_turn -= intermediate_send_troops
                     destination.need_turn = max(destination.need_turn, 0)
                     
                     self.sendable_troops -= intermediate_send_troops                    
                     send_troops += intermediate_send_troops
                     
-                    # print('get intermediate for ' + str(fact_destination.f_id), file=sys.stderr)                    
-                    #print('optimization ' + str(fact_destination.f_id) + ' becomes ' + str(destination.f_id), file=sys.stderr)                
-                else:
-                    destination = fact_destination
+                else: #XF
+                    fact_destination.need_turn -= send_troops
+                    fact_destination.need_turn = max(fact_destination.need_turn, 0)
                 
-                        
-                print('T: ' + str(fact_destination.f_id) + ' - P: ' + str(priority) + ' - D: ' + str(link.distance),
+                
+                # print('get intermediate for ' + str(fact_destination.f_id), file=sys.stderr)                    
+                #print('optimization ' + str(fact_destination.f_id) + ' becomes ' + str(destination.f_id), file=sys.stderr)                
+                                                    
+                print('TO: ' + str(fact_destination.f_id) + ', TI: ' + str(destination.f_id) + ' - P: ' + str(priority) + ' - D: ' + str(link.distance),
                       'N : ' + str(fact_destination.need_turn) + ' - S: ' + str(send_troops), file=sys.stderr)
     
                 if send_troops != 0:
@@ -824,7 +822,7 @@ class Factory:
         present_destination = link.destination[self.f_id]
         simu_destination = simu.factories[present_destination.f_id]
         simu_self = simu.factories[self.f_id]
-
+                
         if simu_destination.owner == ENNEMY and present_destination.owner == ENNEMY \
         and link.distance <= MAX_DISTANCE_CONSIDERED+1 \
         and (((link.distance - present_destination.bomb_eta) < 2 and (link.distance - present_destination.bomb_eta) >= 0 and present_destination.bomb_eta >= 0)):
@@ -844,12 +842,11 @@ class Factory:
         and link.distance <= 1 and (simu_destination.production > simu_self.production or simu_self.production == 3):
             # R9 : promote yourself by blitzing really close ennemy
             
-            print('RULE 9 !!!!', file=sys.stderr)
             priority = priorities[8] * 1000
             priority += simu_destination.production * 100
             priority -= simu_destination.stock
             priority -= simu_destination.min_ennemy_distance * 5
-            priority += simu_destination.min_friend_distance * 5
+            priority += simu_destination.min_friend_distance * 5            
             selected_priorities.append(priority)
                     
         if simu_destination.owner == ENNEMY and present_destination.owner == FRIEND \
@@ -868,13 +865,23 @@ class Factory:
             priority += simu_destination.min_ennemy_distance
             selected_priorities.append(priority)
 
-        if simu_destination.owner == FRIEND and (
-                self.production > simu_destination.production or self.bomb_eta == 1) and simu_destination.production <= 1 and simu_destination.nb_ennemy_troops == 0:
+        if simu_destination.owner == FRIEND \
+        and (self.production > simu_destination.production or self.bomb_eta >= 1) \
+        and (simu_destination.bomb_eta <= 0) \
+        and simu_destination.production <= 1 and simu_destination.nb_ennemy_troops == 0:
             # R4 : help your neighbor to increase production to level 2
 
             priority = priorities[3] * 1000
-            priority += (1-simu_destination.production) * 100
-            priority += simu_destination.min_ennemy_distance
+            
+            #old config
+            #priority += (1-simu_destination.production) * 100
+            #priority += simu_destination.min_ennemy_distance
+            
+            #new_config - #Try to finish the closest one first to the next level of production first
+            priority += simu_destination.production * 10
+            priority += simu_destination.stock
+            priority += simu_destination.nb_friendly_troops
+            
             selected_priorities.append(priority)
 
         if simu_destination.owner == NEUTRAL:
@@ -887,6 +894,8 @@ class Factory:
             priority -= simu_destination.min_friend_distance * 5
             priority -= simu_destination.stock
             priority -= simu_destination.nb_ennemy_troops * 10
+            
+            priority += int(simu_destination.is_central) * 50
             
             #close_other_factories = [link for key, link in simu_destination.links.items() if link.distance <= 2 and simu.factories[key].owner != FRIEND]
             #priority -= len(close_other_factories)
@@ -901,9 +910,9 @@ class Factory:
             priority += (20 - link.distance) * 7
             priority -= simu_destination.min_ennemy_distance * 5
             priority += simu_destination.min_friend_distance * 5
-            priority -= simu_destination.stock * 5
-            priority += simu_destination.nb_ennemy_troops * 10
-            
+            priority -= simu_destination.stock
+            priority += simu_destination.nb_ennemy_troops * 10   
+                                                            
             selected_priorities.append(priority)
 
         if simu_destination.owner == NEUTRAL:
@@ -1138,7 +1147,16 @@ class Game:
 
             if len(match_troop) == 0:
                 if arg_1 == ENNEMY:
-                    factory_destination = self.estimate_target(factory_origin)
+                    
+                    temp_simu = self.clone()                    
+                    for i in range(NB_SIMU_TURN):
+                        temp_simu.simulate_turn()
+                    
+                    #factory_destination = self.estimate_target(factory_origin)
+                    simu_factory_origin = temp_simu.factories[factory_origin.f_id]
+                    simu_factory_destination = temp_simu.estimate_target(factory_origin, self)
+                    factory_destination = self.factories[simu_factory_destination.f_id]
+                    
                     link = factory_origin.links[factory_destination.f_id]
                     bomb_eta = link.distance
                     
@@ -1168,18 +1186,24 @@ class Game:
                 else:
                     match_troop[0].eta = arg_4
 
-    def estimate_target(self, origin):
+    def estimate_target(self, origin, game):
         '''
         Choose the possible target of the ennemy bomb and set the bomb eta accordingly
         '''
         
-        factories_except_origin = [factory for factory in self.factories_owned if factory.f_id != origin.f_id]
-
-        if self.turn == 1:
-            #target = self.factories_owned[0]
+        if self.game_turn == 2: #Turn 1, orders are emitted so the target is decided on turn 2
+            factories_except_origin = [factory for factory in game.factories_owned if factory.f_id != origin.f_id]
+            
             target = factories_except_origin[0]
             eta = origin.links[target.f_id].distance - 1
         else:
+            present_facto_bombed = [factory for factory in game.factories_owned if factory.bomb_eta >= origin.links[factory.f_id].distance]
+            
+            if len(present_facto_bombed) == 1:
+                factories_except_origin = [factory for factory in self.factories_owned if factory.f_id != origin.f_id and factory.f_id != present_facto_bombed[0].f_id]
+            else:
+                factories_except_origin = [factory for factory in self.factories_owned if factory.f_id != origin.f_id]
+                
             temp = sorted(factories_except_origin, key=lambda factory: (factory.bomb_eta, -factory.production, -factory.stock, factory.nb_ennemy_troops))
             target = temp[0]
 
@@ -1216,7 +1240,7 @@ class Game:
                 if (max_ennemy_poduction <= 1 and factory.production == 1 and factory.stock >= 0 and factory.bomb_eta <= 0 and factory.count_zero_prod <= 0) \
                 or (max_ennemy_poduction >= 2 and factory.production >= 2 and factory.stock >= 0 and factory.bomb_eta <= 0 and factory.count_zero_prod <= 0):                    
                     
-                    if (len(self.factories) <= MIN_NB_FACTORIES and (self.turn >=2)) \
+                    if (len(self.factories) <= MIN_NB_FACTORIES+2 and (self.turn >=2)) \
                     or (len(self.factories) > MIN_NB_FACTORIES and factory.production == max(max_ennemy_poduction, max_neutral_production)):                    
                         if target is None:
                             target = factory
@@ -1237,7 +1261,7 @@ class Game:
 
         return None
 
-    def send_orders_to_engine(self):
+    def send_orders_to_engine(self, simu):
         msg = ''
         for factory in self.factories_owned:
             msg += factory.generate_message_orders()
@@ -1257,8 +1281,9 @@ class Game:
         len_field = 50
 
         msg_prod = 'MSG Prod: ' + str(self.prod_friend) + ' vs ' + str(self.prod_ennemy) + ' => ' + str(self.delta_prod)
+        msg_prod +=  '    ' + simu.get_mode_str(True)
         filler = '                                                        '
-        msg_prod += filler[0:len_field - len(msg_prod) - 4]
+        msg_prod += filler[0:len_field - len(msg_prod) - 12]
         msg_prod += 'Stock: ' + str(stock_friend) + ' vs ' + str(stock_ennemy)
 
         if previous_delta == self.delta_prod and self.delta_prod == 0 and previous_prod_friend == self.prod_friend:
@@ -1351,13 +1376,22 @@ class Game:
             for factory in self.central_factories:
                 factory.is_central = True
             
-    def get_mode_str(self):
+    def get_mode_str(self, is_short = False):
         if self.mode == MODE_AGRESSIVE:
-            return 'Agressive'
+            if is_short:
+                return 'AGRE'
+            else:
+                return 'Agressive'
         elif self.mode == MODE_CONQUERING:
-            return 'Conquering'
+            if is_short:
+                return 'CONQ'
+            else:
+                return 'Conquering'
         else:
-            return 'Consolidation'
+            if is_short:
+                return 'CONS'
+            else:
+                return 'Consolidation'
                 
     def solve_turn(self, simulated_game):
 
@@ -1394,7 +1428,7 @@ class Game:
 
         # TODO : Post treatment to optimize orders
 
-        print(self.send_orders_to_engine())
+        print(self.send_orders_to_engine(simulated_game))
         self.turn += 1
 
     def next_id_troop(self):
@@ -1416,9 +1450,13 @@ class Game:
         # R6 : attack your close opponent where he is weak
         # R7 : expand on neutral factories
         # R8 : attack ennemies
+        # R9 : blitz to improve production
         '''
         prod_ennemy = sum(factory.current_production for factory in self.factories_ennemy)
         prod_friend = sum(factory.current_production for factory in self.factories_owned)
+        
+        stock_ennemy = sum(factory.stock for factory in self.factories_ennemy)
+        stock_friend = sum(factory.stock for factory in self.factories_owned)
         
         friend_cyborgs = [troop for troop in self.troops if troop.owner == FRIEND and not troop.is_bomb]
         ennemy_cyborgs = [troop for troop in self.troops if troop.owner == ENNEMY and not troop.is_bomb]
@@ -1434,22 +1472,23 @@ class Game:
         nb_central_neutral = len([factory for factory in self.central_factories if factory.owner == NEUTRAL])                         
                                                 
         if len(neutral_factories) > 0:
-            ratio_0_producion = len(neutral_factories_0)/len(neutral_factories)
+            ratio_0_production = len(neutral_factories_0)/len(neutral_factories)
         else:
-            ratio_0_producion = 0.0
+            ratio_0_production = 0.0
                 
-        print('Diff prod: ' + str(prod_friend - prod_ennemy) +', diff m.prod:' + str(len(self.factories_owned) - nb_fact_friend_max_prod) + ', ratio0: ' + str(round(ratio_0_producion,2)) + ', close: ' + str(nb_close_neutral_prod) + ', central : ' + str(nb_central_neutral), file=sys.stderr) 
+        print('prod f.: ' + str(prod_friend) + ', prod e: ' + str(prod_ennemy) +', diff nb facto:' + str(len(self.factories_owned) <= len(self.factories_ennemy)) + ', ratio0: ' + str(round(ratio_0_production,2)) + ', close: ' + str(nb_close_neutral_prod) + ', central : ' + str(nb_central_neutral), file=sys.stderr) 
         
-        if (len(self.factories) <= MIN_NB_FACTORIES or (self.original_owned.links[self.original_ennemy.f_id].distance <= MAX_DISTANCE_CONSIDERED))\
-        and prod_friend - prod_ennemy <= 1:
+        if ((len(self.factories) <= MIN_NB_FACTORIES and stock_ennemy - stock_friend <= 5 and self.original_owned.min_ennemy_distance <= 10) \
+        or (self.original_owned.links[self.original_ennemy.f_id].distance <= MAX_DISTANCE_CONSIDERED and ratio_0_production > 0.9))\
+        and prod_friend >= prod_ennemy:
+        #and prod_friend - prod_ennemy <= 1:
             self.mode = MODE_AGRESSIVE
             self.conquest_priorities = [12, 11, 10, 7, 8, 9, 5, 6, 13]
-        #elif self.game_turn == 1:
-        #    self.mode = MODE_CONQUERING
-        #    self.conquest_priorities = [0, 0, 0, 0, 13, 0, 12, 0, 0]
-        elif prod_friend - prod_ennemy <= 1 and len(self.factories_owned) <= len(self.factories_ennemy) and len(neutral_factories) > 0 and (ratio_0_producion <= 0.35 or nb_close_neutral_prod > 0 or nb_central_neutral > 0):        
+        elif (prod_friend - prod_ennemy) <= 1 and len(neutral_factories) > 0 and (ratio_0_production <= 0.35 or nb_close_neutral_prod > 0 or nb_central_neutral > 0):
+        #elif (prod_friend - prod_ennemy) >= -1 and (prod_friend - prod_ennemy) <= 1 and len(neutral_factories) > 0 and (ratio_0_production <= 0.35 or nb_close_neutral_prod > 0 or nb_central_neutral > 0):
             self.mode = MODE_CONQUERING
-            self.conquest_priorities = [12, 11, 10, 9, 9, 6, 7, 5, 13]            
+            self.conquest_priorities = [12, 11, 10, 0, 9, 8, 7, 5, 13]            
+            #self.conquest_priorities = [12, 11, 10, 9, 9, 6, 7, 5, 13]            
         elif (prod_friend - prod_ennemy) <= 6 and len(self.factories) >= MIN_NB_FACTORIES and len(self.factories_owned) >= nb_fact_friend_max_prod:
             self.mode = MODE_CONSOLIDATION
             #self.conquest_priorities = [12, 11, 10, 9, 9, 7, 6, 5]
