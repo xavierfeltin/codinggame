@@ -25,6 +25,7 @@ This multiplayer programming game plays out on a grid, where you have to destroy
 
 ## Tron battle (silver league, MCTS, A*)
 *Reference : https://www.codingame.com/multiplayer/bot-programming/tron-battle*
+
 *Repository : https://github.com/xavierfeltin/tron_battle*
 
 In this game your are a program driving the legendary tron light cycle. The light cycle moves in straight lines and only turns in 90° angles while leaving a solid light ribbon in its wake. Each cycle and associated ribbon features a different color.
