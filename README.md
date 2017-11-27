@@ -23,10 +23,19 @@ E.g. Capture a close factory which produces only 1 cyborg OR capture a distant f
 
 This multiplayer programming game plays out on a grid, where you have to destroy as many boxes as possible without dying. Try to simulate the upcoming turns to find out the best solution to play, and avoid explosions.
 
-## Tron battle (silver league, MCTS, A*)
+## Tron battle (legend league, Voronoi diagram, Articulation points, Tree of chambers, A*, Monte Carlo Tree Seach, Minimax)
 *Reference : https://www.codingame.com/multiplayer/bot-programming/tron-battle*
 
-*Repository : https://github.com/xavierfeltin/tron_battle*
+*Repository for the local version : https://github.com/xavierfeltin/tron_battle*
+
+Specific bibliography and readings:
+  - Global approach: https://project.dke.maastrichtuniversity.nl/games/files/bsc/Denteuling-paper.pdf
+  - Global approach: https://www.a1k0n.net/2010/03/04/google-ai-postmortem.html
+  - Monte Carlo Tree Search: https://en.wikipedia.org/wiki/MCTS
+  - Minimax: https://en.wikipedia.org/wiki/Minimax
+  - Articulation points: https://en.wikipedia.org/wiki/Biconnected_component
+  - Articulation points: http://www.geeksforgeeks.org/articulation-points-or-cut-vertices-in-a-graph/
+  - Tree of chambers principle: https://github.com/ikhramts/TronBot (the readme only)
 
 In this game your are a program driving the legendary tron light cycle. The light cycle moves in straight lines and only turns in 90° angles while leaving a solid light ribbon in its wake. Each cycle and associated ribbon features a different color.
 
