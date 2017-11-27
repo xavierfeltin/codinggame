@@ -9,7 +9,7 @@ class Order:
     WAIT = 3
 
     def __init__(self, action, origin, destination, number):
-        self.type = action
+        self.action = action
         self.number = number
         self.origin = origin
         self.destination = destination
@@ -19,11 +19,11 @@ class Order:
         Translate the order into string
         :return: translated message
         '''
-        if self.type == Order.MOVE:
+        if self.action == Order.MOVE:
             msg = 'MOVE ' + str(self.origin.f_id) + ' ' + str(self.destination.f_id) + ' ' + str(self.number)
-        elif self.type == Order.INC:
+        elif self.action == Order.INC:
             msg = 'INC ' + str(self.origin.f_id)
-        elif self.type == Order.BOMB:
+        elif self.action == Order.BOMB:
             msg = 'BOMB ' + str(self.origin.f_id) + ' ' + str(self.destination.f_id)
         else:
             msg = 'WAIT'

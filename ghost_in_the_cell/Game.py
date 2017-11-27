@@ -119,7 +119,6 @@ class Game:
 
                 new_troop = Troop(entity_id, arg_4, arg_5, arg_1, True, link, factory_origin, factory_destination)
 
-                def __init__(self, t_id, number, eta, owner, is_bomb, link, sender, destination):
                 self.troops.append(new_troop)
 
                 if arg_1 == -1:
@@ -156,26 +155,27 @@ class Game:
             if target is not None and target.bomb_eta == -1:
                 target = None
 
-    def send_bomb_order(self, link, fact_destination):
+    def send_bomb_order(self):
         '''
         Manage to send a bomb if possible
         '''
 
-        #TODO: manage bomb function of the global state of the game
-        '''
-        nb_cyborg_player = self.nb_friendly_troops
-        nb_cyborg_ennemy = self.nb_ennemy_troops
+        if self.available_bomb > 0:
+            target = None
+            for factory in self.factories_ennemy:
+                if factory.production >= 2 and factory.stock >= 15:
+                    target = factory
+                    break
 
-        estimated_stock = fact_destination.get_estimated_stock(NB_PREDICTED_TURN_BOMB - self.count_zero_prod)
+            if target is not None:
+                sorted_links = sorted(target.links.values(), key=lambda link: link.distance)
+                link_friend_factories = [link for link in sorted_links if link.destination[target.f_id].owner == FRIEND]
 
-        evaluated_defense = nb_cyborg_ennemy + estimated_stock
-        nb_defense_left = evaluated_defense - nb_cyborg_player
+                if len(link_friend_factories) != 0:
+                    closest_friend_factory = link_friend_factories[0].destination[target.f_id]
+                    return Order(Order.BOMB, closest_friend_factory, target, 0)
 
-        return fact_destination.owner == -1 and link.distance <= MAX_BOMB_DISTANCE and nb_defense_left >= MIN_DEFENSE_TO_SEND_BOMB and (
-        fact_destination.current_production >= 2 \
-        or len(Game.factories_ennemy) == 1) and fact_destination.bomb_eta == -1 and Game.available_bomb != 0
-        '''
-        pass
+        return None
 
     def send_orders_to_engine(self):
         msg = ''
@@ -207,8 +207,9 @@ class Game:
         #4) Solve battles
         #5) Make the bombs explode
         for factory in self.factories:
-            factory.update_troops_after_moves()
-            factory.solve_turn(self)
+            if factory.owner != 0:
+                factory.update_troops_after_moves()
+                factory.solve_turn(self)
 
         #6) Check end conditions
         #TODO ?
@@ -224,7 +225,17 @@ class Game:
             factory.update_troops_after_moves()
             factory.emit_orders(simulated_game)
 
-        #TODO : Post treatment to manage launching bombs
+        #Post treatment to manage launching bombs - replace other action to the same destination factory
+        order = self.send_bomb_order()
+        if order is not None:
+            match_order = [f_order for f_order in self.factories[order.origin.f_id].orders if f_order.destination.f_id == order.destination.f_id]
+
+            if len(match_order) != 0:
+                match_order[0].action = order.action
+                match_order[0].number = order.number
+            else:
+                self.factories[order.origin.f_id].orders.append(order)
+
         #TODO : Post treatment to optimize orders
 
         print(self.send_orders_to_engine())

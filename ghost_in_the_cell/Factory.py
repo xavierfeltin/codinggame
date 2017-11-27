@@ -282,7 +282,7 @@ class Factory:
         if (self.is_production_increasing_feasible(is_danger_situation)):
             factory_stock -= 10
             factory_production += 1
-            self.orders.append(Order(Order.INC, self, None, 10))
+            self.orders.append(Order(Order.INC, self, self, 10))
 
         if self.bomb_eta == 1:
             keep_troops = 0
@@ -291,11 +291,7 @@ class Factory:
 
         sendable_troops = max(factory_stock - keep_troops, 0)
 
-        sorted_links = sorted(self.links.values(), key=lambda link: link.distance)
-        while len(sorted_links) > MIN_FACTORY_CONSIDERED and sorted_links[len(sorted_links) - 1].distance >= MAX_DISTANCE_CONSIDERED:
-            sorted_links.pop()
-
-        sorted_priorities= [(k, self.priorities[k]) for k in sorted(self.priorities, key=lambda priority: priority, reverse=True)]
+        sorted_priorities = [(k, self.priorities[k]) for k in sorted(self.priorities, key=self.priorities.get, reverse=True)]
 
         for prio_factory_id, priority in sorted_priorities:
             link = self.links[prio_factory_id]
@@ -346,7 +342,7 @@ class Factory:
                         break
 
         if len(self.orders) == 0:
-            self.orders.append(Order(Order.WAIT, self, None, 0))
+            self.orders.append(Order(Order.WAIT, self, self, 0))
 
     def build_path(self):
         '''
@@ -470,6 +466,9 @@ class Factory:
             priority += (20 - link.distance ) * 10
             priority += (3 - factory_destination.current_production)
 
+        if link.distance > MAX_DISTANCE_CONSIDERED:
+            priority = round(priority/100)
+
         return priority
 
     def generate_message_orders(self):
@@ -503,16 +502,16 @@ class Factory:
         Execute the orders for the factory
         '''
 
-        move_orders = [order for order in self.orders if order.type == Order.MOVE or order.type == Order.INC]
+        move_orders = [order for order in self.orders if order.action == Order.MOVE or order.action == Order.INC]
         for order in move_orders:
             self.stock -= order.number
-            if order.type == Order.INC:
+            if order.action == Order.INC:
                 self.production += 1
                 self.count_next_increase = COUNT_INCREASE
                 if self.count_zero_prod <= 0:
                     self.current_production = self.production
 
-            elif order.type == Order.MOVE:  #Move order
+            elif order.action == Order.MOVE:  #Move order
                 self.links[order.destination.f_id].add_troops(self, order.destination, order.number, False,game)
             else: #Bomb order
                 self.links[order.destination.f_id].add_troops(self, order.destination, 0, True,game)
