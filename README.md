@@ -1,6 +1,6 @@
 # codinggame
 
-This project is here to capitalize my code from the CodinGame challenges (https://www.codingame.com).
+This project is here to capitalize my code from the CodinGame challenges (https://www.codingame.com, Xavier_F.).
 
 The code is developped in Python 3.
 
