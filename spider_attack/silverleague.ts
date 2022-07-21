@@ -1,6 +1,6 @@
 // Game constants
 const moveHeroDistance = 800; // Max distance done by a hero to a target point
-const monsterBaseDetectionDistance = 5000; // Distance at which a monster detect a base
+const spiderBaseDetectionDistance = 5000; // Distance at which a monster detect a base
 const moveSpiderDistance = 400; // Distance on a straight line done by a monster
 const damageDoneByHero = 2; // Damage done by one hero on monster
 const heroAttackRadius = 800; // Attack radius of a hero
@@ -198,15 +198,17 @@ class Game {
 
         // Handle enemies
         const enemiesNearMe = this.enemies.filter((enemy) => {
-            return enemy.getDistanceFrom(hero.x, hero.y) <= controlRadius;
-        });
+            return enemy.getDistanceFrom(game.enemy.basePosX, game.enemy.basePosY) <= fogBaseVisibility;
+        }).sort((e1, e2): number =>  e1.getDistanceFrom(hero.x, hero.y) < e2.getDistanceFrom(hero.x, hero.y) ? -1 : 1);
+
         if (enemiesNearMe.length > 0) {
-            if (game.me.canCast(3) && game.enemy.canCast() && !hero.isShielded()) {
+            const enemy = enemiesNearMe[0];
+            if (game.me.canCast() && game.enemy.canCast() && !hero.isShielded() && enemy.getDistanceFrom(hero.x, hero.y) <= controlRadius) {
                 return this.spellShieldAction(hero.id, "Protect");
             }
         }
 
-        // Handle spiders
+        // Try to push further more spiders in enemy base
         const spidersNearEnemy = this.spiders.filter((spider) => {
             return spider.distanceFromEnemyBase <= fogBaseVisibility;
         }).sort((s1, s2): number =>  s1.getDistanceFrom(hero.x, hero.y) < s2.getDistanceFrom(hero.x, hero.y) ? -1 : 1);
@@ -214,10 +216,57 @@ class Game {
         if (spidersNearEnemy.length > 0) {
             const closestSpider = spidersNearEnemy[0];
             const distanceFromHero = closestSpider.getDistanceFrom(hero.x, hero.y);
-            if (game.me.canCast(2) && !closestSpider.isShielded() && !closestSpider.isWindedByMe() && distanceFromHero <= windRadius) {
+            if (game.me.canCast() && !closestSpider.isShielded() && !closestSpider.isWindedByMe() && distanceFromHero <= windRadius && closestSpider.health < 15) {
                 return this.spellWindAction(closestSpider, game.enemy.basePosX, game.enemy.basePosY, "Push " + closestSpider.id);
             }
-            else if (distanceFromHero > windRadius) {
+            else if (game.me.canCast() && !closestSpider.isShielded() && !closestSpider.isWindedByMe() && distanceFromHero <= shieldRadius && closestSpider.health >= 15) {
+                return this.spellShieldAction(closestSpider.id, "Boost " + closestSpider.id);
+            }
+            /*
+            else if (game.me.canCast() && distanceFromHero > windRadius) {
+                return this.moveAction(closestSpider.x + closestSpider.vx, closestSpider.y + closestSpider.vy, "Move to " + closestSpider.id);
+            }
+            */
+        }
+
+        const spidersFurtherEnemy = this.spiders.filter((spider) => {
+            return fogBaseVisibility < spider.distanceFromEnemyBase && spider.distanceFromEnemyBase <= (fogBaseVisibility + 0.5 * fogHeroVisibility);
+        }).sort((s1, s2): number =>  s1.distanceFromEnemyBase < s2.distanceFromEnemyBase ? -1 : 1);
+
+        if (spidersFurtherEnemy.length > 0) {
+            const closestSpider = spidersFurtherEnemy[0];
+            const distanceFromHero = closestSpider.getDistanceFrom(hero.x, hero.y);
+            if (!closestSpider.isWindedByMe() && !closestSpider.isControlledByMe() && (closestSpider.health < 15 || !game.me.canCast()) && closestSpider.distanceFromEnemyBase > spiderBaseDetectionDistance) {
+                return this.moveAction(closestSpider.x + closestSpider.vx, closestSpider.y + closestSpider.vy, "Mana from " + closestSpider.id);
+            }
+            else if (game.me.canCast() && !closestSpider.isDangerousForEnemyBase() && !closestSpider.isShielded() && !closestSpider.isWindedByMe() && distanceFromHero <= windRadius) {
+                return this.spellWindAction(closestSpider, game.enemy.basePosX, game.enemy.basePosY, "Push " + closestSpider.id);
+            }
+            else if (!closestSpider.isDangerousForEnemyBase()) {
+                // Get some mana while waiting something better do
+                return this.moveAction(closestSpider.x + closestSpider.vx, closestSpider.y + closestSpider.vy, "Move to " + closestSpider.id);
+            }
+        }
+
+        // Try to take out enemies from base
+        if (enemiesNearMe.length > 0) {
+            console.error("mana: " + game.me.mana + ", enemies: " + enemiesNearMe.length + ", spiders: " + spidersNearEnemy.length);
+
+            enemiesNearMe.sort((e1, e2): number =>  e1.getDistanceFrom(game.enemy.basePosX, game.enemy.basePosY) < e2.getDistanceFrom(game.enemy.basePosX, game.enemy.basePosY) ? -1 : 1);
+            const enemy = enemiesNearMe[0];
+            const distanceFromHero = enemy.getDistanceFrom(hero.x, hero.y);
+            if (game.me.canCast() && !enemy.isShielded() && distanceFromHero <= controlRadius && spidersNearEnemy.length > 0 && enemy.distanceFromEnemyBase < spiderBaseDetectionDistance) {
+                return this.spellControlAction(enemy, game.me.basePosX, game.me.basePosY, "Take out " + enemy.id);
+            }
+            else if (game.me.canCast() && !enemy.isShielded() && spidersNearEnemy.length > 0) {
+                return this.moveAction(enemy.x, enemy.y, "Move to " + enemy.id);
+            }
+        }
+
+        if (spidersNearEnemy.length > 0) {
+            const closestSpider = spidersNearEnemy[0];
+            const distanceFromHero = closestSpider.getDistanceFrom(hero.x, hero.y);
+            if (game.me.canCast() && distanceFromHero > windRadius) {
                 return this.moveAction(closestSpider.x + closestSpider.vx, closestSpider.y + closestSpider.vy, "Move to " + closestSpider.id);
             }
         }
@@ -233,6 +282,7 @@ class Game {
 
     solveDefensiveBehavior = (heroIdx: number): string => {
         const hero = this.myHeroes[heroIdx];
+        const otherHero = this.myHeroes[1 - heroIdx];
 
         // Handle controlled friends
         const friendsNearMe = this.myHeroes.filter((friend) => {
@@ -241,14 +291,14 @@ class Game {
 
         if (friendsNearMe.length > 0) {
             const friend = friendsNearMe[0];
-            if (game.me.canCast() && friend.isBeingControlled()) {
+            if (game.me.canCast() && friend.isBeingControlled() && !hero.isShielded() && hero.getDistanceFrom(friend.x, friend.y) <= shieldRadius) {
                 return this.spellShieldAction(friend.id, "Protect " + friend.id);
             }
         }
 
         // Handle enemies
         const enemiesNearBase = this.enemies.filter((enemy) => {
-            return enemy.getDistanceFrom(game.me.basePosX, game.me.basePosY) <= fogBaseVisibility;
+            return enemy.getDistanceFrom(game.me.basePosX, game.me.basePosY) <= fogBaseVisibility && !enemy.isTargetedByMe();
         });
         if (enemiesNearBase.length > 0) {
             const enemy = enemiesNearBase[0];
@@ -256,15 +306,17 @@ class Game {
                     && !enemy.isShielded() && !enemy.isControlledByMe() && !enemy.isWindedByMe()) {
                 return this.spellWindAction(enemy, game.enemy.basePosX, game.enemy.basePosY, "Repel " + enemy.id);
             }
-            else if (!enemy.isControlledByMe() && !enemy.isWindedByMe() && !enemy.isTargetedByMe()) {
+            /*
+            else if (game.me.canCast() && game.enemy.canCast() && !enemy.isControlledByMe() && !enemy.isWindedByMe() && !enemy.isTargetedByMe()) {
                 enemy.targetByMe = true;
                 return this.moveAction(enemy.x, enemy.y, "Move to " + enemy.id);
             }
+            */
         }
 
         // Handle spiders
         const spidersNearBase = this.spiders.filter((spider) => {
-            return spider.distanceFromMyBase <= (fogBaseVisibility + fogHeroVisibility);
+            return spider.distanceFromMyBase <= (fogBaseVisibility + (0.5 * fogHeroVisibility)) && !spider.isTargetedByMe();
         }).sort((s1, s2): number =>  {
             if (s1.isCriticalForMyBase() && s2.isCriticalForMyBase()) {
                 if ((s1.distanceFromMyBase < (4 * moveSpiderDistance) || s2.distanceFromMyBase < (4 * moveSpiderDistance))) {
@@ -299,16 +351,39 @@ class Game {
         if (spidersNearBase.length > 0) {
             const closestSpider = spidersNearBase[0];
             const distanceFromHero = closestSpider.getDistanceFrom(hero.x, hero.y);
+            const distanceFromOtherHero = closestSpider.getDistanceFrom(otherHero.x, otherHero.y);
+            const isClosestHero = distanceFromHero <= distanceFromOtherHero;
+            const isSpiderHealthLowEnough = (closestSpider.health * 0.5) <= Math.floor((closestSpider.distanceFromMyBase - attackBaseMonsterDistance)/ moveSpiderDistance);
+
+            let log = heroIdx + " near spiders: " + spidersNearBase.map((s) => s.id).join(",");
+            log += ", " + "spider " + closestSpider.id + " targeted: " + closestSpider.isTargetedByMe();
+            log += ", " + "I'm closest : " + isClosestHero;
+            console.error(log);
+
             if (game.me.canCast() && !closestSpider.isShielded() && !closestSpider.isControlledByMe() && !closestSpider.isWindedByMe()
-                && distanceFromHero <= controlRadius && closestSpider.health > 15 && closestSpider.isCriticalForMyBase()) {
-                return this.spellControlAction(closestSpider, game.enemy.basePosX, game.enemy.basePosY, "Urgent Repel " + closestSpider.id);
-            }
-            else if (game.me.canCast() && !closestSpider.isShielded() && !closestSpider.isControlledByMe() && !closestSpider.isWindedByMe()
-                    && distanceFromHero <= windRadius && closestSpider.health > 10) {
+                    && distanceFromHero <= windRadius && !isSpiderHealthLowEnough && closestSpider.isCriticalForMyBase()) {
                 return this.spellWindAction(closestSpider, game.enemy.basePosX, game.enemy.basePosY, "Repel " + closestSpider.id);
             }
-            else {
-                return this.moveAction(closestSpider.x + closestSpider.vx, closestSpider.y + closestSpider.vy, "Move to " + closestSpider.id);
+            else if (game.me.canCast() && !closestSpider.isShielded() && !closestSpider.isControlledByMe() && !closestSpider.isWindedByMe()
+                && distanceFromHero <= controlRadius && !isSpiderHealthLowEnough && closestSpider.isCriticalForMyBase()) {
+                return this.spellControlAction(closestSpider, game.enemy.basePosX, game.enemy.basePosY, "Urgent Repel " + closestSpider.id);
+            }
+            // Avoid putting several heroes on a spider than can be handled only by one
+            else if (isClosestHero && isSpiderHealthLowEnough && closestSpider.isCriticalForMyBase() && distanceFromHero <= heroAttackRadius) {
+                closestSpider.targetByMe = true;
+                return this.moveAction(closestSpider.x + closestSpider.vx, closestSpider.y + closestSpider.vy, "Move #1 to " + closestSpider.id);
+            }
+            else if (isClosestHero && isSpiderHealthLowEnough && closestSpider.isDangerousForMyBase()) {
+                closestSpider.targetByMe = true;
+                return this.moveAction(closestSpider.x + closestSpider.vx, closestSpider.y + closestSpider.vy, "Move #2 to " + closestSpider.id);
+            }
+            else if (isClosestHero && !closestSpider.isDangerousForMyBase()) {
+                closestSpider.targetByMe = true;
+                return this.moveAction(closestSpider.x + closestSpider.vx, closestSpider.y + closestSpider.vy, "Move #3 to " + closestSpider.id);
+            }
+            else if (!isSpiderHealthLowEnough && !closestSpider.isControlledByMe() && !closestSpider.isWindedByMe()) {
+                // Need several heroes on it
+                return this.moveAction(closestSpider.x + closestSpider.vx, closestSpider.y + closestSpider.vy, "Backup to " + closestSpider.id);
             }
         }
 
@@ -322,7 +397,7 @@ class Game {
     }
 
     nextAction = (heroIdx: number): string => {
-        if (heroIdx == 0) {
+        if (heroIdx == 2) {
             return this.solveAgressiveBehavior(heroIdx);
         }
         else {
@@ -347,7 +422,7 @@ let threateningSpiders: number[][] = []; // spiders going to my base
 let oppThreateningSpiders: number[][] = []; // spiders going to opponent base
 let inoffensiveSpiders: number[][] = []; // spiders not going to any base
 let isFirstRound = true;
-let neutralPositions: number[][] = [[13698, 5947], [5543, 2296], [2296, 5543]]; // old agressive 14513, 6797
+let neutralPositions: number[][] = [[5543, 2296], [2296, 5543], [13698, 5947]];
 
 function distance(x1: number, y1: number, x2: number, y2: number): number {
     return Math.round(Math.sqrt(Math.pow((x2-x1),2) + Math.pow((y2-y1),2)));
